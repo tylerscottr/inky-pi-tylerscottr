@@ -5,7 +5,10 @@ import os
 import logging
 import hashlib
 import tempfile
-import subprocess
+import asyncio
+import platform
+import shutil
+from pyppeteer import launch
 
 logger = logging.getLogger(__name__)
 
@@ -100,40 +103,124 @@ def take_screenshot_html(html_str, dimensions, timeout_ms=None):
 
     return image
 
+def get_chrome_executable():
+    """Find the Chrome/Chromium executable for the current platform."""
+
+    # Common Chrome installation paths on Windows
+    chrome_paths = [
+        os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+        os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+    ]
+    for path in chrome_paths:
+        if os.path.exists(path):
+            return path
+    # Fallback to searching in PATH
+    chrome_cmd = shutil.which("chrome")
+    if chrome_cmd:
+        return chrome_cmd
+    
+    # Try common executable names
+    for cmd in ["chromium-headless-shell", "chrome", "chrome.exe", "chromium", "chromium.exe"]:
+        if shutil.which(cmd):
+            return cmd
+
+    # We'll let pyppeteer download its own Chromium
+    return None
+
+async def take_screenshot_pyppeteer(target, output_path, dimensions, timeout_ms=None):
+    """Take a screenshot using Pyppeteer."""
+    browser = None
+
+    # Get Chrome executable path
+    chrome_executable = get_chrome_executable()
+    logger.info(f"Using Chrome executable: {chrome_executable if chrome_executable else 'Pyppeteer default'}")
+    
+    try:
+        launch_options = {
+            'headless': True,
+            'args': [
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--use-gl=swiftshader',
+                '--hide-scrollbars',
+                '--in-process-gpu',
+                '--js-flags=--jitless',
+                '--disable-zero-copy',
+                '--disable-gpu-memory-buffer-compositor-resources',
+                '--disable-extensions',
+                '--disable-plugins',
+                '--mute-audio',
+                '--no-sandbox',
+            ],
+            'handleSIGINT': False,
+            'handleSIGTERM': False,
+            'handleSIGHUP': False,
+        }
+        
+        # Use existing Chrome if available, otherwise let Pyppeteer download
+        if chrome_executable:
+            launch_options['executablePath'] = chrome_executable
+
+        # Launch browser and load the page
+        browser = await launch(**launch_options)
+        page = await browser.newPage()
+        
+        # Set viewport
+        await page.setViewport({
+            'width': dimensions[0],
+            'height': dimensions[1],
+            'deviceScaleFactor': 1
+        })
+
+        # Navigate to target
+        url = target
+        if not target.startswith(('http://', 'https://', 'file://')):
+            # Convert file path to file:// URL
+            url = f"file://{os.path.abspath(target)}"
+
+        # Set timeout if specified
+        timeout = timeout_ms if timeout_ms else 30000
+        
+        await page.goto(url, {
+            'waitUntil': 'networkidle0',
+            'timeout': timeout
+        })
+
+        # Take screenshot
+        await page.screenshot({'path': output_path})
+        
+        return True
+
+    except Exception as e:
+        logger.error(f"Pyppeteer screenshot failed: {str(e)}")
+        return False
+    finally:
+        if browser:
+            await browser.close()
+
 def take_screenshot(target, dimensions, timeout_ms=None):
+    """Take a screenshot using Pyppeteer (wrapper for async function)."""
     image = None
     try:
         # Create a temporary output file for the screenshot
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as img_file:
             img_file_path = img_file.name
 
-        command = [
-            "chromium-headless-shell",
-            target,
-            "--headless",
-            f"--screenshot={img_file_path}",
-            f"--window-size={dimensions[0]},{dimensions[1]}",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--use-gl=swiftshader",
-            "--hide-scrollbars",
-            "--in-process-gpu",
-            "--js-flags=--jitless",
-            "--disable-zero-copy",
-            "--disable-gpu-memory-buffer-compositor-resources",
-            "--disable-extensions",
-            "--disable-plugins",
-            "--mute-audio",
-            "--no-sandbox"
-        ]
-        if timeout_ms:
-            command.append(f"--timeout={timeout_ms}")
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print(f"Screenshot target: {target}")
 
-        # Check if the process failed or the output file is missing
-        if result.returncode != 0 or not os.path.exists(img_file_path):
-            logger.error("Failed to take screenshot:")
-            logger.error(result.stderr.decode('utf-8'))
+        # Run the async Pyppeteer function
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            success = loop.run_until_complete(
+                take_screenshot_pyppeteer(target, img_file_path, dimensions, timeout_ms)
+            )
+        finally:
+            loop.close()
+
+        if not success or not os.path.exists(img_file_path):
+            logger.error("Failed to take screenshot with Pyppeteer")
             return None
 
         # Load the image using PIL

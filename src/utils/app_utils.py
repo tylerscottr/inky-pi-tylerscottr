@@ -40,7 +40,12 @@ FONTS = {
 }
 
 def resolve_path(file_path):
-    src_path = Path(os.getenv("SRC_DIR"))
+    src_dir = os.getenv("SRC_DIR")
+    if src_dir is None:
+        # Default to the src directory relative to this file
+        src_path = Path(__file__).parent.parent
+    else:
+        src_path = Path(src_dir)
 
     return str(src_path / file_path)
 
@@ -90,7 +95,7 @@ def get_fonts():
         for variant in variants:
             fonts_list.append({
                 "font_family": font_family,
-                "url": resolve_path(os.path.join("static", "fonts", variant["file"])),
+                "url": Path(resolve_path(os.path.join("static", "fonts", variant["file"]))).as_uri(),
                 "font_weight": variant.get("font-weight", "normal"),
                 "font_style": variant.get("font-style", "normal"),
             })

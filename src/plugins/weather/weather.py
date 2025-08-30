@@ -634,9 +634,9 @@ class Weather(BasePlugin):
             return dt.strftime("%H:00" if hour_only else "%H:%M")
         
         if include_am_pm:
-            fmt = "%-I %p" if hour_only else "%-I:%M %p"
+            fmt = "%I %p" if hour_only else "%I:%M %p"
         else:
-            fmt = "%-I" if hour_only else "%-I:%M"
+            fmt = "%I" if hour_only else "%I:%M"
 
         return dt.strftime(fmt).lstrip("0")
     
