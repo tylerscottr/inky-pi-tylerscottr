@@ -1,0 +1,19 @@
+{% extends "plugin.html" %}
+
+{% block content %}
+<div class="bible-content">
+  <div class="title">{{ title }}</div>
+  <div class="content-with-icon">
+    <div class="icon-container">
+      <img src="{{ bible_icon }}" alt="Bible Icon" class="bible-icon">
+    </div>
+    <div class="text-container">
+      <div class="quote-text">{{ text }}</div>
+      <div class="source">— {{ source }}</div>
+    </div>
+  </div>
+  {% if reason %}
+  <div class="reason">{{ reason }}</div>
+  {% endif %}
+</div>
+{% endblock %}

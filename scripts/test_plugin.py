@@ -61,6 +61,10 @@ def get_default_plugin_settings(plugin_id):
             "imageModel": "dall-e-3",
             "textPrompt": "A futuristic cityscape at sunset.",
         },
+        "daily_scripture": {
+            "textModel": "gpt-4o-mini",
+            "selectedFrame": "Rectangle",
+        },
         "weather": {
             "location": "Denver, CO",
             "latitude": 39.7392,

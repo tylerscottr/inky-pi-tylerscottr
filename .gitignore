@@ -172,3 +172,4 @@ cython_debug/
 # Project outputs
 composite_output.png
 /src/static/images/current_image.png
+src/plugins/daily_scripture/used_quotes.txt

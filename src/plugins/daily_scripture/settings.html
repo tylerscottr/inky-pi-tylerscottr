@@ -1,0 +1,55 @@
+<div class="form-group">
+    <div class="form-group nowrap">
+        <label for="title" class="form-label">Title:</label>
+        <input type="text" id="title" name="title" placeholder="Daily Scripture" required class="form-input">
+    </div>
+
+    <!-- Text Model Dropdown -->
+    <div class="form-group nowrap">
+        <label for="textModel" class="form-label">Text Model:</label>
+        <select id="textModel" name="textModel" class="form-input">
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-4.1-mini">GPT-4.1 mini</option>
+            <option value="gpt-4.1-nano">GPT-4.1 nano</option>
+            <option value="gpt-5">GPT-5</option>
+            <option value="gpt-5-mini">GPT-5 mini</option>
+            <option value="gpt-5-nano">GPT-5 nano</option>
+        </select>
+    </div>
+
+    <!-- Bible Version Dropdown -->
+    <div class="form-group nowrap">
+        <label for="bibleVersion" class="form-label">Bible Version:</label>
+        <select id="bibleVersion" name="bibleVersion" class="form-input">
+            <option value="ESV">ESV (English Standard Version)</option>
+            <option value="NIV">NIV (New International Version)</option>
+            <option value="NASB">NASB (New American Standard Bible)</option>
+            <option value="NLT">NLT (New Living Translation)</option>
+            <option value="NKJV">NKJV (New King James Version)</option>
+            <option value="KJV">KJV (King James Version)</option>
+            <option value="CSB">CSB (Christian Standard Bible)</option>
+            <option value="HCSB">HCSB (Holman Christian Standard Bible)</option>
+            <option value="NET">NET (New English Translation)</option>
+            <option value="RSV">RSV (Revised Standard Version)</option>
+        </select>
+    </div>
+</div>
+
+<script>
+
+    // populate form values from plugin settings
+    document.addEventListener('DOMContentLoaded', () => {        
+        if (loadPluginSettings) {
+            // Populate text inputs
+            document.getElementById('title').value = pluginSettings.title || 'Daily Scripture';
+            
+            // Populate text model
+            document.getElementById('textModel').value = pluginSettings.textModel || 'gpt-4o-mini';
+            
+            // Populate bible version
+            document.getElementById('bibleVersion').value = pluginSettings.bibleVersion || 'ESV';
+        }
+    });
+</script>
