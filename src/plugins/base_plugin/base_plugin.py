@@ -2,6 +2,7 @@ import logging
 import os
 from utils.app_utils import resolve_path, get_fonts
 from utils.image_utils import take_screenshot_html
+from utils.ai_utils import get_text_models, get_image_models, get_text_models_by_provider, get_image_models_by_provider
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pathlib import Path
 import asyncio
@@ -66,6 +67,13 @@ class BasePlugin:
             template_params["settings_template"] = f"{self.get_plugin_id()}/settings.html"
         
         template_params['frame_styles'] = FRAME_STYLES
+
+        # Add AI model lists for plugins that need them
+        template_params['ai_text_models'] = get_text_models()
+        template_params['ai_image_models'] = get_image_models() 
+        template_params['ai_text_models_by_provider'] = get_text_models_by_provider()
+        template_params['ai_image_models_by_provider'] = get_image_models_by_provider()
+            
         return template_params
 
     def render_image(self, dimensions, html_file, css_file=None, template_params={}):

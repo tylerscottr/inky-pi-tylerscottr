@@ -10,15 +10,17 @@ import logging
 from flask import Flask, render_template, url_for, send_from_directory, Blueprint
 from jinja2 import FileSystemLoader, ChoiceLoader
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Add src directory to path to import modules
+# Add src directory to path to import modules FIRST
 script_dir = os.path.dirname(__file__)
 project_root = os.path.join(script_dir, '..')
 src_dir = os.path.join(project_root, 'src')
 sys.path.insert(0, src_dir)
+
+from utils.ai_utils import get_text_models, get_image_models, get_text_models_by_provider, get_image_models_by_provider
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 from config import Config
 
@@ -271,7 +273,11 @@ def plugin_page(plugin_id):
                 {'name': 'rectangle', 'icon': 'frames/rectangle.png'},
                 {'name': 'corner', 'icon': 'frames/corner.png'},
                 {'name': 'top_and_bottom', 'icon': 'frames/top_and_bottom.png'}
-            ]
+            ],
+            'ai_text_models': get_text_models(),
+            'ai_image_models': get_image_models(),
+            'ai_text_models_by_provider': get_text_models_by_provider(),
+            'ai_image_models_by_provider': get_image_models_by_provider()
         }
         
         # Try to load plugin-specific template parameters from the actual plugin

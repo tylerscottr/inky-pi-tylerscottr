@@ -53,7 +53,7 @@ def get_default_plugin_settings(plugin_id):
     defaults = {
         "ai_text": {
             "title": "Test AI Text",
-            "textModel": "gpt-4o-mini",
+            "textModel": "claude-sonnet-4-5-20250929",
             "textPrompt": "Tell me something interesting.",
             "selectedFrame": "Rectangle"
         },
@@ -62,7 +62,7 @@ def get_default_plugin_settings(plugin_id):
             "textPrompt": "A futuristic cityscape at sunset.",
         },
         "daily_scripture": {
-            "textModel": "gpt-4o-mini",
+            "textModel": "claude-sonnet-4-5-20250929",
             "selectedFrame": "Rectangle",
         },
         "weather": {

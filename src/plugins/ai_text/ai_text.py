@@ -1,17 +1,13 @@
 from plugins.base_plugin.base_plugin import BasePlugin
 from utils.app_utils import resolve_path
-from openai import OpenAI
+from utils.ai_utils import create_text_generator
 from utils.image_utils import resize_image
 from datetime import datetime, timedelta
 import logging
-import hashlib
 
 logger = logging.getLogger(__name__)
 
 class AIText(BasePlugin):
-    _cached_response = None
-    _cache_key = None
-    _cache_timestamp = None
     def generate_settings_template(self):
         template_params = super().generate_settings_template()
         template_params['api_key'] = {
@@ -23,10 +19,6 @@ class AIText(BasePlugin):
         return template_params
 
     def generate_image(self, settings, device_config):
-        api_key = device_config.load_env_key("OPEN_AI_SECRET")
-        if not api_key:
-            raise RuntimeError("OPEN AI API Key not configured.")
-
         title = settings.get("title")
 
         text_model = settings.get('textModel')
@@ -38,11 +30,11 @@ class AIText(BasePlugin):
             raise RuntimeError("Text Prompt is required.")
 
         try:
-            ai_client = OpenAI(api_key = api_key)
-            prompt_response = self.fetch_text_prompt(ai_client, text_model, text_prompt)
+            text_generator = create_text_generator(text_model, device_config)
+            prompt_response = self.fetch_text_prompt(text_generator, text_model, text_prompt)
         except Exception as e:
-            logger.error(f"Failed to make Open AI request: {str(e)}")
-            raise RuntimeError("Open AI request failure, please check logs.")
+            logger.error(f"Failed to make AI request: {str(e)}")
+            raise RuntimeError("AI request failure, please check logs.")
 
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
@@ -59,26 +51,11 @@ class AIText(BasePlugin):
         return image
     
     @classmethod
-    def fetch_text_prompt(cls, ai_client, model, text_prompt):
+    def fetch_text_prompt(cls, text_generator, model, text_prompt):
         """
-        Fetch text prompt with caching for test environments only.
-        In production (inkypi.py), no caching is applied to ensure fresh content.
+        Fetch text prompt using the AI utility class.
         """
-        # Only use caching if we're in a test environment (when test_plugin.py is running)
-        import sys
-        is_test_environment = any('test_plugin.py' in arg for arg in sys.argv)
-        
-        if is_test_environment:
-            cache_key = hashlib.md5(f"{model}:{text_prompt}".encode()).hexdigest()
-            current_time = datetime.now()
-            
-            # Check if we have a cached response for this exact prompt that's less than 1 minute old
-            if (cls._cached_response and cls._cache_key == cache_key):
-                logger.info(f"Using cached response for prompt (test mode): {text_prompt}")
-                return cls._cached_response
-
-
-        logger.info(f"Getting random text prompt from input {text_prompt}, model: {model}")
+        logger.info(f"Getting text prompt from input {text_prompt}, model: {model}")
 
         system_content = (
             "You are a highly intelligent text generation assistant. Generate concise, "
@@ -91,31 +68,8 @@ class AIText(BasePlugin):
             "or paragraphs do not provide the new line character."
             f"For context, today is {datetime.today().strftime('%Y-%m-%d')}"
         )
-        user_content = text_prompt
-
-        # Make the API call
-        response = ai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_content
-                },
-                {
-                    "role": "user",
-                    "content": user_content
-                }
-            ],
-            temperature=1
-        )
-
-        prompt = response.choices[0].message.content.strip()
-        logger.info(f"Generated random text prompt: {prompt}")
         
-        # Store in cache only if in test environment
-        if is_test_environment:
-            cls._cached_response = prompt
-            cls._cache_key = cache_key
-            logger.info(f"Cached response for next request (test mode)")
-
+        prompt = text_generator.generate_text(model, system_content, text_prompt)
+        logger.info(f"Generated text prompt: {prompt}")
+        
         return prompt

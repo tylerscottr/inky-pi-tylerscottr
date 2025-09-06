@@ -1,19 +1,15 @@
 from plugins.base_plugin.base_plugin import BasePlugin
 from utils.app_utils import resolve_path
-from openai import OpenAI
+from utils.ai_utils import create_text_generator
 from utils.image_utils import resize_image
 from datetime import datetime, timedelta
 import logging
-import hashlib
 import json
 import os
 
 logger = logging.getLogger(__name__)
 
 class BibleQuote(BasePlugin):
-    _cached_response = None
-    _cache_key = None
-    _cache_timestamp = None
     
     def generate_settings_template(self):
         template_params = super().generate_settings_template()
@@ -26,10 +22,6 @@ class BibleQuote(BasePlugin):
         return template_params
 
     def generate_image(self, settings, device_config):
-        api_key = device_config.load_env_key("OPEN_AI_SECRET")
-        if not api_key:
-            raise RuntimeError("OpenAI API Key not configured.")
-
         title = settings.get("title", "Daily Scripture") or "Daily Scripture"
 
         text_model = settings.get('textModel')
@@ -39,13 +31,13 @@ class BibleQuote(BasePlugin):
         bible_version = settings.get('bibleVersion', 'ESV')
 
         try:
-            ai_client = OpenAI(api_key=api_key)
+            text_generator = create_text_generator(text_model, device_config)
             used_quotes = self.get_used_quotes()
             logger.info(f"Retrieved {len(used_quotes)} previously used quotes: {used_quotes}")
-            bible_response = self.fetch_daily_scripture(ai_client, text_model, bible_version, used_quotes)
+            bible_response = self.fetch_daily_scripture(text_generator, text_model, bible_version, used_quotes)
         except Exception as e:
-            logger.error(f"Failed to make OpenAI request: {str(e)}")
-            raise RuntimeError("OpenAI request failure, please check logs.")
+            logger.error(f"Failed to make AI request: {str(e)}")
+            raise RuntimeError("AI request failure, please check logs.")
 
         dimensions = device_config.get_resolution()
         if device_config.get_config("orientation") == "vertical":
@@ -60,12 +52,16 @@ class BibleQuote(BasePlugin):
             if json_response.endswith('```'):
                 json_response = json_response[:-3]  # Remove ```
             json_response = json_response.strip()
-            
+
             bible_data = json.loads(json_response)
             text = bible_data.get('text', '')
             source = bible_data.get('source', '')
             reason = bible_data.get('reason', '')
-            
+
+            # Check if AI provided a repeat scripture it was told to avoid
+            if source and source in used_quotes:
+                logger.warning(f"AI model provided a repeat scripture that was in the exclusion list: {source}")
+
             # Save successful quote to file
             if source:  # Only save if we have a valid source
                 self.save_used_quote(source)
@@ -120,6 +116,8 @@ class BibleQuote(BasePlugin):
                     f.write('\n'.join(used_quotes) + '\n')
                 
                 logger.info(f"Saved used quote: {source}")
+            else:
+                logger.info(f"Quote already exists in used quotes: {source}")
             
         except Exception as e:
             logger.warning(f"Failed to save used quote: {e}")
@@ -138,78 +136,46 @@ class BibleQuote(BasePlugin):
         return []
     
     @classmethod
-    def fetch_daily_scripture(cls, ai_client, model, bible_version, used_quotes=None):
+    def fetch_daily_scripture(cls, text_generator, model, bible_version, used_quotes=None):
         """
-        Fetch Bible quote with caching for test environments only.
-        In production (inkypi.py), no caching is applied to ensure fresh content.
+        Fetch Bible quote using the AI utility class.
         """
-        # Only use caching if we're in a test environment (when test_plugin.py is running)
-        import sys
-        is_test_environment = any('test_plugin.py' in arg for arg in sys.argv)
-        
-        if is_test_environment:
-            cache_key = hashlib.md5(f"{model}:{bible_version}".encode()).hexdigest()
-            current_time = datetime.now()
-            
-            # Check if we have a cached response for this exact prompt that's less than 1 minute old
-            if (cls._cached_response and cls._cache_key == cache_key):
-                logger.info(f"Using cached response for Bible quote (test mode): {bible_version}")
-                return cls._cached_response
-
         logger.info(f"Getting Bible quote, version: {bible_version}, model: {model}")
 
         today_date = datetime.today().strftime('%Y-%m-%d')
         
         # Build the system prompt with used quotes avoidance
         system_content = (
-            "You are a knowledgeable Bible scholar. Provide a Bible quote that shows assurance of pardon, "
-            "or is convicting, inspiring, encouraging, or hopeful. "
-            "If Christmas, Easter, or Passover is currently happening or will happen in the next 2 weeks, "
-            "choose a quote related to that holiday. If there is another Christian holiday in the next 3 days, "
-            "choose a quote related to that holiday. "
+            "You are a helpful Bible scholar and will be providing a passage from the Bible. "
         )
         
         system_content += (
-            "Format your response as valid JSON with the following fields: "
-            "text: The text from the Bible passage (keep it concise, preferably under 100 words), "
+            "You MUST format your response as valid JSON (with no other information) with the following fields: "
+            "text: The passage from the Bible passage (keep it concise, preferably under 40 words), "
             "source: The location of that passage in the Bible formatted as '<book> <chapter>:<verse_start>[-<verse_end>] (<bible_version>)', "
-            "reason: A short description (1-2 sentences) of why this passage is relevant, inspirational, hopeful, or redeeming. "
+            "reason: A short description (preferable under 40 words) of why this passage is relevant, inspirational, hopeful, or redeeming. "
             f"For reference, today is {today_date}. "
         )
-        
-        user_content = f"Please provide a Bible quote using the {bible_version} version of the Bible."
+
+        user_content = (
+            f"Please provide a short Bible quote using the {bible_version} version of the Bible. "
+            # "The quote should show assurance of pardon or be convicting, inspiring, encouraging, or hopeful."
+            # "If Christmas, Easter, or Passover is currently happening or will happen in the next 2 weeks, "
+            # "choose a quote related to that holiday. If there is another Christian holiday in the next 3 days, "
+            # "choose a quote related to that holiday."
+        )
 
         # Add used quotes avoidance if we have previous quotes
         if used_quotes:
             logger.info(f"Instructing AI to avoid {len(used_quotes)} previously used passages")
             user_content += (
-                f"IMPORTANT: Avoid providing any of these previously used Bible passages: {', '.join(used_quotes)}. "
+                f" IMPORTANT: DO NOT provide any of these previously used Bible passages: [{', '.join(used_quotes)}]. "
                 "Please select a different passage that has not been used recently. "
             )
 
-        # Make the API call
-        response = ai_client.chat.completions.create(
-            model=model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_content
-                },
-                {
-                    "role": "user",
-                    "content": user_content
-                }
-            ],
-            temperature=0.7
-        )
-
-        quote_response = response.choices[0].message.content.strip()
+        # Note: We'll use a moderate temperature to encourage more varied responses while
+        # still maintaining coherence. Higher temperature helps avoid repetitive quotes.
+        quote_response = text_generator.generate_text(model, system_content, user_content, temperature=0.75)
         logger.info(f"Generated Bible quote response: {quote_response}")
-        
-        # Store in cache only if in test environment
-        if is_test_environment:
-            cls._cached_response = quote_response
-            cls._cache_key = cache_key
-            logger.info(f"Cached response for next request (test mode)")
 
         return quote_response
