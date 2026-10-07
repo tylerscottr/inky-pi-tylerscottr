@@ -168,6 +168,15 @@ mock_display_output/
 
 # IDE files
 .idea
+.vscode/
+
+# Claude Code
+.claude/
+
+# Project outputs
+composite_output.png
+/src/static/images/current_image.png
+src/plugins/daily_scripture/used_quotes.txt
 
 # Static Files added by install/update_vendors.sh
 /src/static/scripts/

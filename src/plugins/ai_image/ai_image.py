@@ -1,15 +1,12 @@
 from plugins.base_plugin.base_plugin import BasePlugin
-from openai import OpenAI
-from PIL import Image
-from io import BytesIO
-import base64
+from utils.ai_utils import create_text_generator, create_image_generator, ALL_IMAGE_MODELS
 import logging
 
 logger = logging.getLogger(__name__)
 
-IMAGE_MODELS = ["gpt-image-1", "gpt-image-2"]
 DEFAULT_IMAGE_MODEL = "gpt-image-1"
 DEFAULT_IMAGE_QUALITY = "medium"
+PROMPT_MODEL = "gpt-4o"
 
 class AIImage(BasePlugin):
     def generate_settings_template(self):
@@ -24,15 +21,10 @@ class AIImage(BasePlugin):
     def generate_image(self, settings, device_config):
         logger.info("=== AI Image Plugin: Starting image generation ===")
 
-        api_key = device_config.load_env_key("OPEN_AI_SECRET")
-        if not api_key:
-            logger.error("OpenAI API Key not configured")
-            raise RuntimeError("OPEN AI API Key not configured.")
-
         text_prompt = settings.get("textPrompt", "")
         image_model = settings.get('imageModel', DEFAULT_IMAGE_MODEL)
 
-        if image_model not in IMAGE_MODELS:
+        if image_model not in ALL_IMAGE_MODELS:
             logger.error(f"Invalid image model: {image_model}")
             raise RuntimeError("Invalid Image Model provided.")
 
@@ -46,16 +38,17 @@ class AIImage(BasePlugin):
 
         image = None
         try:
-            ai_client = OpenAI(api_key = api_key)
+            image_generator = create_image_generator(image_model, device_config)
 
             if randomize_prompt:
-                logger.debug("Generating randomized prompt using GPT-4...")
-                text_prompt = AIImage.fetch_image_prompt(ai_client, text_prompt)
+                logger.debug(f"Generating randomized prompt using {PROMPT_MODEL}...")
+                text_generator = create_text_generator(PROMPT_MODEL, device_config)
+                text_prompt = AIImage.fetch_image_prompt(text_generator, text_prompt)
                 logger.info(f"Randomized prompt: '{text_prompt}'")
 
             logger.info(f"Generating image with {image_model}...")
             image = self.fetch_image(
-                ai_client,
+                image_generator,
                 text_prompt,
                 model=image_model,
                 quality=image_quality,
@@ -66,41 +59,19 @@ class AIImage(BasePlugin):
                 logger.info(f"AI image generated successfully: {image.size[0]}x{image.size[1]}")
 
         except Exception as e:
-            logger.error(f"Failed to make OpenAI request: {str(e)}")
-            raise RuntimeError("Open AI request failure, please check logs.")
+            logger.error(f"Failed to make AI request: {str(e)}")
+            raise RuntimeError("AI request failure, please check logs.")
 
         logger.info("=== AI Image Plugin: Image generation complete ===")
         return image
 
-    def fetch_image(self, ai_client, prompt, model=DEFAULT_IMAGE_MODEL, quality=DEFAULT_IMAGE_QUALITY, orientation="horizontal"):
-        """
-        Fetch image from OpenAI API. Now an instance method to access image_loader.
-        """
+    def fetch_image(self, image_generator, prompt, model=DEFAULT_IMAGE_MODEL, quality=DEFAULT_IMAGE_QUALITY, orientation="horizontal"):
         logger.info(f"Generating image for prompt: {prompt}, model: {model}, quality: {quality}")
-        prompt += (
-            ". The image should fully occupy the entire canvas without any frames, "
-            "borders, or cropped areas. No blank spaces or artificial framing."
-        )
-        prompt += (
-            "Focus on simplicity, bold shapes, and strong contrast to enhance clarity "
-            "and visual appeal. Avoid excessive detail or complex gradients, ensuring "
-            "the design works well with flat, vibrant colors."
-        )
-        args = {
-            "model": model,
-            "prompt": prompt,
-            "size": "1536x1024" if orientation == "horizontal" else "1024x1536",
-            "quality": quality,
-        }
-
-        response = ai_client.images.generate(**args)
-        image_base64 = response.data[0].b64_json
-        image_bytes = base64.b64decode(image_base64)
-        img = Image.open(BytesIO(image_bytes))
-        return img
+        size = "1536x1024" if orientation == "horizontal" else "1024x1536"
+        return image_generator.generate_image(model, prompt, size, quality)
 
     @staticmethod
-    def fetch_image_prompt(ai_client, from_prompt=None):
+    def fetch_image_prompt(text_generator, from_prompt=None):
         logger.info("Getting random image prompt...")
 
         system_content = (
@@ -136,22 +107,6 @@ class AIImage(BasePlugin):
                 "Avoid changing the subject of the prompt."
             )
 
-        # Make the API call
-        response = ai_client.chat.completions.create(
-            model="gpt-4o",
-            messages=[
-                {
-                    "role": "system",
-                    "content": system_content
-                },
-                {
-                    "role": "user",
-                    "content": user_content
-                }
-            ],
-            temperature=1
-        )
-
-        prompt = response.choices[0].message.content.strip()
+        prompt = text_generator.generate_text(PROMPT_MODEL, system_content, user_content)
         logger.info(f"Generated random image prompt: {prompt}")
         return prompt

@@ -107,6 +107,8 @@ To update your InkyPi with the latest code changes, follow these steps:
     ```
 This process ensures that any new updates, including code changes and additional dependencies, are properly applied without requiring a full reinstallation.
 
+To do steps 2 and 3 in one go, run `sudo bash install/update.sh --pull`. It runs `git pull --rebase` as the owner of the project directory, so it also follows a branch that was force-pushed, and it stops without changing anything if you have uncommitted changes.
+
 ## Uninstall
 To install InkyPi, simply run the following command:
 

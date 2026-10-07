@@ -26,12 +26,53 @@ SERVICE_FILE_TARGET="/etc/systemd/system/$SERVICE_FILE"
 APT_REQUIREMENTS_FILE="$SCRIPT_DIR/debian-requirements.txt"
 PIP_REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
 
+PULL=false
+
 echo_success() {
   echo -e "$1 [\e[32m\xE2\x9C\x94\e[0m]"
 }
 
 echo_error() {
   echo -e "$1 [\e[31m\xE2\x9C\x98\e[0m]\n"
+}
+
+usage() {
+  echo "Usage: sudo bash install/update.sh [--pull]"
+  echo "  --pull  Pull the latest code with 'git pull --rebase' before updating."
+}
+
+parse_arguments() {
+  for arg in "$@"; do
+    case "$arg" in
+      --pull) PULL=true ;;
+      -h|--help) usage; exit 0 ;;
+      *) echo_error "ERROR: Unknown option '$arg'."; usage; exit 1 ;;
+    esac
+  done
+}
+
+# Run git as the checkout's owner so root never owns files under .git.
+repo_git() {
+  sudo -u "$REPO_OWNER" -H git -C "$REPO_DIR" "$@"
+}
+
+pull_latest() {
+  REPO_DIR=$( cd "$SCRIPT_DIR/.." && pwd )
+  REPO_OWNER=$(stat -c '%U' "$REPO_DIR")
+
+  if ! repo_git diff --quiet HEAD; then
+    echo_error "ERROR: $REPO_DIR has uncommitted changes. Commit or stash them, then rerun."
+    exit 1
+  fi
+
+  echo "Pulling latest code into $REPO_DIR..."
+  # Rebasing keeps the checkout in sync even when the remote branch was force-pushed.
+  if ! repo_git pull --rebase; then
+    repo_git rebase --abort > /dev/null 2>&1
+    echo_error "ERROR: 'git pull --rebase' failed. Fix it in $REPO_DIR, then rerun."
+    exit 1
+  fi
+  echo_success "Now at $(repo_git log --oneline -1)."
 }
 
 setup_zramswap_service() {
@@ -70,11 +111,18 @@ get_os_version() {
   echo "$(lsb_release -sr)"
 }
 
+parse_arguments "$@"
 
 # Ensure script is run with sudo
 if [ "$EUID" -ne 0 ]; then
   echo_error "ERROR: This script requires root privileges. Please run it with sudo."
   exit 1
+fi
+
+if [ "$PULL" = true ]; then
+  pull_latest
+  # Rerun the pulled copy of this script so the update uses its latest steps.
+  exec bash "$SCRIPT_DIR/update.sh"
 fi
 
 apt-get update -y > /dev/null
