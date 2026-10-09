@@ -47,7 +47,7 @@
                 data.append("plugin_id", "{{ plugin.id }}");
                 data.append("refresh_settings", JSON.stringify(formData));
 
-                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName, {
+                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(pluginInstanceName), {
                     method: 'PUT',
                     body: data
                 });
@@ -93,7 +93,7 @@
                 formData.append("refresh_settings", JSON.stringify(scheduleData));
                 clearFormOnSubmit = true
             } else if (action == "update_instance") {
-                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName,
+                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(pluginInstanceName),
                 method = 'PUT'
             }
 

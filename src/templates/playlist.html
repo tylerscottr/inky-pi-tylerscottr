@@ -365,7 +365,7 @@
                 data.append('plugin_id', currentEditPluginId);
                 data.append('refresh_settings', JSON.stringify(formData));
 
-                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + currentEditInstance, {
+                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(currentEditInstance), {
                     method: 'PUT',
                     body: data
                 });

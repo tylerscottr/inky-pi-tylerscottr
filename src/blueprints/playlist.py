@@ -22,10 +22,10 @@ def add_plugin():
         plugin_id = plugin_settings.pop("plugin_id")
 
         playlist = refresh_settings.get('playlist')
-        instance_name = refresh_settings.get('instance_name')
+        instance_name = (refresh_settings.get('instance_name') or "").strip()
         if not playlist:
             return jsonify({"error": "Playlist name is required"}), 400
-        if not instance_name or not instance_name.strip():
+        if not instance_name:
             return jsonify({"error": "Instance name is required"}), 400
         if not all(char.isalpha() or char.isspace() or char.isnumeric() for char in instance_name):
             return jsonify({"error": "Instance name can only contain alphanumeric characters and spaces"}), 400
