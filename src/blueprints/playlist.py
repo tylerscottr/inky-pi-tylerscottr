@@ -52,12 +52,14 @@ def add_plugin():
                 return jsonify({"error": "Refresh time is required"}), 400
             refresh_config = {"scheduled": refresh_time}
 
+        from blueprints.plugin import get_plugin_default_button_actions
         plugin_settings.update(handle_request_files(request.files))
         plugin_dict = {
             "plugin_id": plugin_id,
             "refresh": refresh_config,
             "plugin_settings": plugin_settings,
-            "name": instance_name
+            "name": instance_name,
+            "button_actions": get_plugin_default_button_actions(plugin_id),
         }
         result = playlist_manager.add_plugin_to_playlist(playlist, plugin_dict)
         if not result:

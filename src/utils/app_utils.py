@@ -95,7 +95,7 @@ def get_fonts():
         for variant in variants:
             fonts_list.append({
                 "font_family": font_family,
-                "url": resolve_path(os.path.join("static", "fonts", variant["file"])),
+                "url": Path(resolve_path(os.path.join("static", "fonts", variant["file"]))).as_uri(),
                 "font_weight": variant.get("font-weight", "normal"),
                 "font_style": variant.get("font-style", "normal"),
             })

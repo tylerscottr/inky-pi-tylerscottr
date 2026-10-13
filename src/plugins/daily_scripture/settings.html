@@ -1,0 +1,83 @@
+{% from 'ai_model_select.html' import ai_model_select %}
+<div class="form-group">
+    <div class="form-group nowrap">
+        <label for="title" class="form-label">Title:</label>
+        <input type="text" id="title" name="title" placeholder="Daily Scripture" required class="form-input">
+    </div>
+
+    {{ ai_model_select('textModel', 'Text Model', 'text', (plugin_settings or {}).get('textModel'), default='gpt-4o-mini') }}
+
+    <!-- Bible Version Dropdown -->
+    <div class="form-group nowrap">
+        <label for="bibleVersion" class="form-label">Bible Version:</label>
+        <select id="bibleVersion" name="bibleVersion" class="form-input">
+            {% for canon, versions in bible_versions.items() %}
+            <optgroup label="{{ canon }}">
+                {% for abbreviation, name in versions.items() %}
+                <option value="{{ abbreviation }}">{{ abbreviation }} ({{ name }})</option>
+                {% endfor %}
+            </optgroup>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<!-- Recent verses, shared by every Daily Scripture instance -->
+<div class="collapsible">
+    <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+        Recent Verses ({{ verse_history | length + older_verse_sources | length }}) <span class="collapsible-icon">▼</span>
+    </button>
+    <div class="settings-container collapsible-content">
+        <small class="verse-history-meta">New verses avoid repeating these.</small>
+        {% for verse in verse_history %}
+        <div class="verse-history-entry">
+            <div>
+                <strong>{{ verse.source }}</strong>
+                {% if verse.added_at %}<small class="verse-history-meta">· {{ verse.added_at | format_relative_time }}</small>{% endif %}
+                {% if verse.current %}<small class="verse-history-meta">· current</small>{% endif %}
+            </div>
+            <div>{{ verse.text }}</div>
+            {% if verse.reason %}<small class="verse-history-meta">{{ verse.reason }}</small>{% endif %}
+        </div>
+        {% else %}
+        {% if not older_verse_sources %}<p>No verses yet.</p>{% endif %}
+        {% endfor %}
+        {% if older_verse_sources %}
+        <div class="verse-history-entry">
+            <strong>Earlier</strong>
+            <div>{{ older_verse_sources | join(", ") }}</div>
+            <small class="verse-history-meta">Only the references of these were saved.</small>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    .verse-history-entry {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+        padding: 0.6rem 0;
+        border-bottom: 1px solid var(--border-subtle);
+    }
+    .verse-history-entry:last-child {
+        border-bottom: none;
+    }
+    .verse-history-meta {
+        color: var(--text-secondary);
+    }
+</style>
+
+<script>
+
+    // populate form values from plugin settings
+    document.addEventListener('DOMContentLoaded', () => {        
+        if (loadPluginSettings) {
+            // Populate text inputs
+            document.getElementById('title').value = pluginSettings.title || 'Daily Scripture';
+            
+            // Populate bible version
+            document.getElementById('bibleVersion').value = pluginSettings.bibleVersion || 'ESV';
+        }
+    });
+</script>

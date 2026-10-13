@@ -1,0 +1,27 @@
+{#
+    A model dropdown listing the models of each AI provider that has an API key.
+    capability is "text", "vision" (reads images), or "image" (generates images).
+    Usage: {% from 'ai_model_select.html' import ai_model_select %}
+           {{ ai_model_select('textModel', 'Text Model', 'text', (plugin_settings or {}).get('textModel')) }}
+#}
+{% macro ai_model_select(name, label, capability, value=none, default=none, onchange=none) %}
+{% set picker = ai_model_picker(capability, value, default) %}
+<div class="form-group nowrap">
+    <label for="{{ name }}" class="form-label">{{ label }}:</label>
+    <select id="{{ name }}" name="{{ name }}" class="form-input"{% if onchange %} onchange="{{ onchange }}"{% endif %}>
+        {% if picker.unlisted %}
+        <option value="{{ picker.unlisted }}" selected>{{ picker.unlisted }} (not available)</option>
+        {% endif %}
+        {% for group in picker.groups %}
+        <optgroup label="{{ group.provider }}">
+            {% for model in group.models %}
+            <option value="{{ model.id }}"{% if model.id == picker.selected %} selected{% endif %}>{{ model.label }}</option>
+            {% endfor %}
+        </optgroup>
+        {% endfor %}
+        {% if not picker.groups and not picker.unlisted %}
+        <option value="">Add an OpenAI or Anthropic key under API Keys</option>
+        {% endif %}
+    </select>
+</div>
+{% endmacro %}

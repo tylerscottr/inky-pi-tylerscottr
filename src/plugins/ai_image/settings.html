@@ -1,3 +1,4 @@
+{% from 'ai_model_select.html' import ai_model_select %}
 <div class="form-group">
     <label for="textPrompt" class="form-label">Text Prompt:</label>
     <input type="text" id="textPrompt" name="textPrompt" placeholder="Type something..." required class="form-input">
@@ -6,14 +7,7 @@
 
 <!-- Dropdown Options -->
 <div class="form-group dropdown-container">
-    <!-- Image Model Dropdown -->
-    <div class="form-group">
-        <label for="imageModel" class="form-label">Image Model:</label>
-        <select id="imageModel" name="imageModel" class="form-input" onchange="toggleQualityDropdown()">
-            <option value="gpt-image-1" selected>GPT Image 1</option>
-            <option value="gpt-image-2">GPT Image 2</option>
-        </select>
-    </div>
+    {{ ai_model_select('imageModel', 'Image Model', 'image', (plugin_settings or {}).get('imageModel'), default='gpt-image-1', onchange='toggleQualityDropdown()') }}
 
     <!-- Quality Dropdown -->
     <div class="form-group">
@@ -41,7 +35,7 @@
         // Clear out old options
         qualityDropdown.innerHTML = "";
 
-        if (selectedModel === "gpt-image-1" || selectedModel === "gpt-image-2") {
+        if (selectedModel.startsWith("gpt-image-")) {
             qualityDropdown.add(new Option("High", "high"));
             qualityDropdown.add(new Option("Medium", "medium"));
             qualityDropdown.add(new Option("Low", "low"));
@@ -55,18 +49,15 @@
     // populate form values from plugin settings
     document.addEventListener('DOMContentLoaded', () => {   
         // defaults
-        var imageModel = 'gpt-image-1'
         var quality = 'medium'
 
         if (loadPluginSettings) {
             document.getElementById('textPrompt').value = pluginSettings.textPrompt || '';
             document.getElementById('randomizePrompt').checked = pluginSettings.randomizePrompt || false;
 
-            imageModel = pluginSettings.imageModel;
             quality = pluginSettings.quality;
         }
 
-        document.getElementById('imageModel').value = imageModel;
         toggleQualityDropdown(quality)
     });
 </script>

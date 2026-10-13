@@ -28,6 +28,13 @@ def get_plugin_button_actions(plugin_id):
     except ValueError:
         return []
 
+def get_plugin_default_button_actions(plugin_id):
+    """Returns the long press actions a plugin's new instances start with, or none if it isn't loaded."""
+    try:
+        return get_plugin_instance({"id": plugin_id}).get_default_button_actions()
+    except ValueError:
+        return {}
+
 def _delete_plugin_instance_images(device_config, plugin_instance_obj):
     """Delete all images associated with a plugin instance."""
     # Delete the plugin instance's generated image

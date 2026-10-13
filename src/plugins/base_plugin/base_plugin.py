@@ -58,6 +58,10 @@ class BasePlugin:
         """Returns the actions this plugin offers for button long presses, as [{"id", "label"}]."""
         return []
 
+    def get_default_button_actions(self):
+        """Returns the long press actions new instances start with, as {button: action}."""
+        return {}
+
     def run_button_action(self, action_id, settings, device_config):
         """Runs one of the actions from get_button_actions() and returns the image to display."""
         raise NotImplementedError(f"Plugin '{self.get_plugin_id()}' has no button action '{action_id}'")

@@ -38,17 +38,18 @@ img {
 /* Frame Styling */
 
 .rectangle-frame {
-    border: 0.7vw solid;
+    border: min(0.7vw, 0.7vh) solid;
 }
 
 .top-bottom-frame {
-    border-top: 0.7vw solid;
-    border-bottom: 0.7vw solid;
+    border-top: min(0.7vw, 0.7vh) solid;
+    border-bottom: min(0.7vw, 0.7vh) solid;
 }
 
 .corner-frame {
-    position:relative;
+    position: relative;
 }
+
 .corner-frame:before {
     display: block;
     content: "";
@@ -57,11 +58,11 @@ img {
     position: absolute;
     top: 0;
     left: 0;
-    border-top: 0.7vw solid;
-    border-left: 0.7vw solid;
-  }
-  
-  .corner-frame:after {
+    border-top: min(0.7vw, 0.7vh) solid;
+    border-left: min(0.7vw, 0.7vh) solid;
+}
+
+.corner-frame:after {
     display: block;
     content: "";
     width: 10vw;
@@ -69,6 +70,6 @@ img {
     position: absolute;
     bottom: 0;
     right: 0;
-    border-bottom: 0.5vw solid;
-    border-right: 0.5vw solid;
-  }
+    border-bottom: min(0.5vw, 0.5vh) solid;
+    border-right: min(0.5vw, 0.5vh) solid;
+}

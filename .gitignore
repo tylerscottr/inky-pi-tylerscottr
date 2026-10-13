@@ -178,6 +178,7 @@ composite_output.png
 /src/static/images/current_image.png
 src/plugins/daily_scripture/used_quotes.txt
 src/plugins/daily_scripture/history.json
+src/plugins/unsplash/hidden_photos.json
 
 # Static Files added by install/update_vendors.sh
 /src/static/scripts/

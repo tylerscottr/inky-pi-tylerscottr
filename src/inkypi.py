@@ -34,6 +34,7 @@ from blueprints.playlist import playlist_bp
 from blueprints.apikeys import apikeys_bp
 from jinja2 import ChoiceLoader, FileSystemLoader
 from plugins.plugin_registry import load_plugins
+from utils.ai_models import model_picker
 from waitress import serve
 
 
@@ -67,6 +68,7 @@ display_manager = DisplayManager(device_config)
 led = LedController(device_config)
 refresh_task = RefreshTask(device_config, display_manager, led)
 button_service = ButtonService(device_config, refresh_task.handle_button)
+app.jinja_env.globals["ai_model_picker"] = lambda *args, **kwargs: model_picker(device_config, *args, **kwargs)
 
 # Start with the display's built-in buttons and LED until the user saves their own settings.
 if device_config.get_config("buttons", default=None) is None:

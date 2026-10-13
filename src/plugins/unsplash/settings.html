@@ -1,8 +1,18 @@
+{% from 'ai_model_select.html' import ai_model_select %}
 <div class="form-group">
     <label for="search_query" class="form-label">Search Query:</label>
     <input type="text" id="search_query" name="search_query" placeholder="Type something..." class="form-input">
     <small style="width: 100%; color: var(--text-primary);">Optional: Search for an image on Unsplash. If not provided, a random image will be fetched.</small>
 </div>
+
+<div class="form-group nowrap">
+    <input type="checkbox" id="aiCheck" name="aiCheck" value="true" onchange="updateAiCheckFields()">
+    <label for="aiCheck" style="white-space: normal;">Check that photos match the search with AI</label>
+</div>
+<div id="aiCheckFields">
+    {{ ai_model_select('aiCheckModel', 'Model', 'vision', (plugin_settings or {}).get('aiCheckModel'), default='claude-haiku-4-5') }}
+</div>
+<input type="hidden" id="currentPhotoId" name="_current_photo_id">
 
 <div class="form-group">
     <label for="collections" class="form-label">Collections:</label>
@@ -48,6 +58,10 @@
 </div>
 
 <script>
+    function updateAiCheckFields() {
+        document.getElementById('aiCheckFields').style.display = document.getElementById('aiCheck').checked ? '' : 'none';
+    }
+
     // populate form values from plugin settings
     document.addEventListener('DOMContentLoaded', () => {
         if (loadPluginSettings) {
@@ -56,6 +70,10 @@
             document.getElementById('content_filter').value = pluginSettings.content_filter || 'low';
             document.getElementById('color').value = pluginSettings.color || '';
             document.getElementById('orientation').value = pluginSettings.orientation || '';
+            document.getElementById('aiCheck').checked = pluginSettings.aiCheck === 'true';
+            // Kept so "Hide this photo" still knows the photo on screen after saving.
+            document.getElementById('currentPhotoId').value = pluginSettings._current_photo_id || '';
         }
+        updateAiCheckFields();
     });
 </script>
