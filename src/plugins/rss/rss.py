@@ -1,7 +1,6 @@
 from plugins.base_plugin.base_plugin import BasePlugin
 from PIL import Image
 from io import BytesIO
-import feedparser
 import requests
 import logging
 import html
@@ -46,6 +45,7 @@ class Rss(BasePlugin):
         return image
     
     def parse_rss_feed(self, url, timeout=10):
+        import feedparser  # Loaded on first use to save memory.
         resp = requests.get(url, timeout=timeout, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
         

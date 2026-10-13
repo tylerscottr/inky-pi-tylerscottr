@@ -56,7 +56,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **API Keys** (`blueprints/apikeys.py`): Edits `.env` keys from the web UI
 
 ### Key Utilities
-- **AI Utilities** (`utils/ai_utils.py`): OpenAI/Claude text, image-question, and image generators shared by the AI plugins; `TEXT_MODELS`/`IMAGE_MODELS` are only the offline fallback
+- **AI Utilities** (`utils/ai_utils.py`): OpenAI/Claude text, image-question, and image generators shared by the AI plugins; they call the REST APIs through `post_with_retries` in `utils/http_client.py` instead of the SDKs, which cost about 48 MB of memory; `TEXT_MODELS`/`IMAGE_MODELS` are only the offline fallback
 - **AI Model Picker** (`utils/ai_models.py`, `templates/ai_model_select.html`): Lists each keyed provider's models from its API, cached for an hour; plugin settings use `{{ ai_model_select(name, label, "text"|"vision"|"image", saved_value) }}`
 - **Image Processing** (`utils/image_utils.py`): Resize, orientation, enhancement, HTML-to-image screenshot capabilities
 - **App Utilities** (`utils/app_utils.py`): Path resolution, font management, startup image generation
@@ -84,6 +84,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 3. Create `plugin-info.json` with metadata
 4. Optional: Add `settings.html` and `render/` templates for HTML rendering
 5. Test with `python scripts/test_plugin.py <plugin_id>`, adding default settings to `get_default_plugin_settings()`
+6. Import large libraries only that plugin needs (numpy, feed or calendar parsers) inside the function that uses them, since every plugin module loads at startup
 
 ### HTML/CSS Rendering
 - Plugins can render HTML templates using Jinja2 environment

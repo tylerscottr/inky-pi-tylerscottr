@@ -1,3 +1,4 @@
+import ctypes
 import threading
 import time
 import os
@@ -18,6 +19,17 @@ from buttons import (ACTION_NEXT_PLAYLIST, ACTION_NEXT_PLUGIN, ACTION_NONE, ACTI
 from PIL import Image
 
 logger = logging.getLogger(__name__)
+
+try:
+    _LIBC = ctypes.CDLL("libc.so.6")
+except OSError:
+    _LIBC = None  # Not glibc, e.g. on a dev machine
+
+
+def release_free_memory():
+    """Hands memory freed after image work back to the system; glibc keeps it otherwise (~10 MB)."""
+    if _LIBC:
+        _LIBC.malloc_trim(0)
 
 # The worker never sleeps longer than this, so it notices clock jumps and config edits.
 MAX_SLEEP_SECONDS = 60
@@ -357,6 +369,7 @@ class RefreshTask:
             for future in futures:
                 future.set_exception(e)
         finally:
+            release_free_memory()
             if visible:
                 with self.condition:
                     self._working = False

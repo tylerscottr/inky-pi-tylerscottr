@@ -4,7 +4,6 @@ from plugins.base_plugin.base_plugin import BasePlugin
 from PIL import Image, ImageColor, ImageDraw, ImageFont
 from io import BytesIO
 import logging
-import numpy as np
 import math
 from datetime import datetime
 import pytz
@@ -230,6 +229,7 @@ class Clock(BasePlugin):
         Draw a gradient that starts at start_angle and ends at end_angle, using RGBA colors.
         Angles are interpreted for a clock face (0 at 12 o'clock, increasing clockwise).
         """
+        import numpy as np  # Loaded on first use to save memory.
         x,y = np.ogrid[:h,:w]
         cx,cy = h/2, w/2
 
@@ -276,16 +276,16 @@ class Clock(BasePlugin):
 
         if hand_offset:
             offset_start = (x1, y1)
-            offset_end = (x1 + hand_offset * np.cos(-angle), y1 + hand_offset * np.sin(-angle))
+            offset_end = (x1 + hand_offset * math.cos(-angle), y1 + hand_offset * math.sin(-angle))
             draw.line([offset_start, offset_end], fill=border_color, width=offset_width, joint=None)
         
         # add hand_offset if set
-        x1 = x1 + hand_offset * np.cos(-angle)
-        y1 = y1 + hand_offset * np.sin(-angle)
+        x1 = x1 + hand_offset * math.cos(-angle)
+        y1 = y1 + hand_offset * math.sin(-angle)
 
         # determine end point of hand
-        x2 = x1 + length * np.cos(-angle)
-        y2 = y1 + length * np.sin(-angle)
+        x2 = x1 + length * math.cos(-angle)
+        y2 = y1 + length * math.sin(-angle)
 
         start = (x1,y1)
         end = (x2,y2)

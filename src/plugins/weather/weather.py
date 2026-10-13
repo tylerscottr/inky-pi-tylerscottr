@@ -4,7 +4,6 @@ import os
 import requests
 import logging
 from datetime import datetime, timedelta, timezone, date
-from astral import moon
 import pytz
 from io import BytesIO
 import math
@@ -335,6 +334,7 @@ class Weather(BasePlugin):
         """
         Parse the daily forecast from Open-Meteo API and calculate moon phase and illumination using the local 'astral' library.
         """
+        from astral import moon  # Loaded on first use to save memory.
         times = daily_data.get('time', [])
         weather_codes = daily_data.get('weathercode', [])
         temp_max = daily_data.get('temperature_2m_max', [])

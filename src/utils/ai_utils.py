@@ -6,8 +6,17 @@ from PIL import Image
 from io import BytesIO
 import re
 import sys
+from utils.http_client import post_with_retries
 
 logger = logging.getLogger(__name__)
+
+# The APIs are called directly; their SDKs would add about 48 MB of memory once loaded.
+OPENAI_API = "https://api.openai.com/v1"
+CLAUDE_API = "https://api.anthropic.com/v1"
+CLAUDE_API_VERSION = "2023-06-01"
+TEXT_TIMEOUT_SECONDS = 300
+IMAGE_TIMEOUT_SECONDS = 300
+QUOTA_EXHAUSTED = "insufficient_quota"
 
 # Built-in model lists, used when a provider's model list can't be fetched (see utils/ai_models.py).
 TEXT_MODELS = {
@@ -69,12 +78,6 @@ class AITextGenerator(ABC):
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self._initialize_client()
-
-    @abstractmethod
-    def _initialize_client(self):
-        """Initialize the AI client."""
-        pass
 
     @abstractmethod
     def _make_text_request(self, model: str, system_prompt: str, user_prompt: str, temperature: float):
@@ -130,12 +133,6 @@ class AIImageGenerator(ABC):
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self._initialize_client()
-
-    @abstractmethod
-    def _initialize_client(self):
-        """Initialize the AI client."""
-        pass
 
     @abstractmethod
     def _make_image_request(self, model: str, prompt: str, size: str, quality: str):
@@ -188,12 +185,39 @@ class AIImageGenerator(ABC):
         return any('test_plugin.py' in arg for arg in sys.argv)
 
 
+def _post_json(url, headers, body, timeout, is_retryable=None):
+    """POSTs a JSON API request and returns the reply, raising the API's own error message on failure."""
+    response = post_with_retries(url, headers=headers, json=body, timeout=timeout, is_retryable=is_retryable)
+    if not response.ok:
+        raise RuntimeError(f"{url} returned {response.status_code}: {_api_error(response).get('message')}")
+    return response.json()
+
+
+def _api_error(response):
+    """Returns the {"type", "code", "message"} error both APIs send, or the raw text as the message."""
+    try:
+        error = response.json().get("error")
+        if isinstance(error, dict):
+            return error
+    except ValueError:
+        pass
+    return {"message": response.text[:500]}
+
+
+def _openai_retryable(response):
+    # OpenAI also answers an exhausted quota with 429, which waiting won't fix.
+    error = _api_error(response)
+    return QUOTA_EXHAUSTED not in (error.get("type"), error.get("code"))
+
+
 class OpenAITextGenerator(AITextGenerator):
     """OpenAI implementation of text generation."""
 
-    def _initialize_client(self):
-        from openai import OpenAI
-        self.client = OpenAI(api_key=self.api_key)
+    def _chat(self, model, messages, **options):
+        reply = _post_json(f"{OPENAI_API}/chat/completions", {"Authorization": f"Bearer {self.api_key}"},
+                           {"model": model, "messages": messages, **options}, TEXT_TIMEOUT_SECONDS,
+                           is_retryable=_openai_retryable)
+        return reply["choices"][0]["message"]["content"].strip()
 
     def _make_text_request(self, model: str, system_prompt: str, user_prompt: str, temperature: float):
         if OPENAI_DEFAULT_TEMPERATURE.match(model):
@@ -202,54 +226,31 @@ class OpenAITextGenerator(AITextGenerator):
             # Convert standardized 0.0-1.0 temperature scale to OpenAI's 0.0-2.0 scale
             openai_temperature = min(temperature * 2.0, 2.0)
 
-        response = self.client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            temperature=openai_temperature
-        )
-        return response.choices[0].message.content.strip()
+        return self._chat(model, [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ], temperature=openai_temperature)
 
     def _make_image_question_request(self, model: str, question: str, image_url: str):
-        response = self.client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": [
-                {"type": "text", "text": question},
-                {"type": "image_url", "image_url": {"url": image_url, "detail": "low"}},
-            ]}],
-        )
-        return response.choices[0].message.content.strip()
+        return self._chat(model, [{"role": "user", "content": [
+            {"type": "text", "text": question},
+            {"type": "image_url", "image_url": {"url": image_url, "detail": "low"}},
+        ]}])
 
 
 class OpenAIImageGenerator(AIImageGenerator):
     """OpenAI implementation of image generation."""
 
-    def _initialize_client(self):
-        from openai import OpenAI
-        self.client = OpenAI(api_key=self.api_key)
-
     def _make_image_request(self, model: str, prompt: str, size: str = "1024x1024", quality: str = "medium"):
-        response = self.client.images.generate(
-            model=model,
-            prompt=prompt,
-            size=size,
-            quality=quality,
-        )
-        image_bytes = base64.b64decode(response.data[0].b64_json)
+        reply = _post_json(f"{OPENAI_API}/images/generations", {"Authorization": f"Bearer {self.api_key}"},
+                           {"model": model, "prompt": prompt, "size": size, "quality": quality},
+                           IMAGE_TIMEOUT_SECONDS, is_retryable=_openai_retryable)
+        image_bytes = base64.b64decode(reply["data"][0]["b64_json"])
         return Image.open(BytesIO(image_bytes))
 
 
 class ClaudeTextGenerator(AITextGenerator):
     """Claude implementation of text generation."""
-
-    def _initialize_client(self):
-        try:
-            import anthropic
-            self.client = anthropic.Anthropic(api_key=self.api_key)
-        except ImportError:
-            raise RuntimeError("anthropic package is required for Claude support. Install with: pip install anthropic")
 
     def _make_text_request(self, model: str, system_prompt: str, user_prompt: str, temperature: float):
         return self._create_message(model, user_prompt, system=system_prompt, temperature=temperature)
@@ -261,30 +262,23 @@ class ClaudeTextGenerator(AITextGenerator):
         ])
 
     def _create_message(self, model, content, system=None, temperature=None):
-        options = {}
+        headers = {"x-api-key": self.api_key, "anthropic-version": CLAUDE_API_VERSION}
+        body = {"model": model, "max_tokens": 16000, "messages": [{"role": "user", "content": content}]}
         if system:
-            options["system"] = system
+            body["system"] = system
         if temperature is not None and claude_accepts_temperature(model):
-            # The 1.x SDK has no temperature argument, so send it as a raw body field.
-            options["extra_body"] = {"temperature": temperature}
+            body["temperature"] = temperature
         if claude_uses_fallback(model):
-            options["betas"] = ["server-side-fallback-2026-07-01"]
-            options["fallbacks"] = "default"
+            headers["anthropic-beta"] = "server-side-fallback-2026-07-01"
+            body["fallbacks"] = "default"
 
-        response = self.client.beta.messages.create(
-            model=model,
-            max_tokens=16000,
-            messages=[
-                {"role": "user", "content": content}
-            ],
-            **options
-        )
+        reply = _post_json(f"{CLAUDE_API}/messages", headers, body, TEXT_TIMEOUT_SECONDS)
 
-        if response.stop_reason == "refusal":
-            raise RuntimeError(f"Claude declined the request: {response.stop_details}")
+        if reply.get("stop_reason") == "refusal":
+            raise RuntimeError(f"Claude declined the request: {reply.get('stop_details')}")
 
         # Thinking blocks may precede the text, so find the text block explicitly.
-        return next(block.text for block in response.content if block.type == "text").strip()
+        return next(block["text"] for block in reply["content"] if block["type"] == "text").strip()
 
 
 def create_text_generator(model: str, device_config) -> AITextGenerator:

@@ -17,12 +17,17 @@ Usage:
 
 import requests
 import logging
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 # Global session instance (singleton)
 _HTTP_SESSION: Optional[requests.Session] = None
+
+# Statuses that mean "try again shortly": timeouts, rate limits, and server errors (529 is overloaded).
+RETRY_STATUSES = {408, 429, 500, 502, 503, 504, 529}
+MAX_RETRY_WAIT_SECONDS = 60
 
 
 def get_http_session() -> requests.Session:
@@ -58,6 +63,32 @@ def get_http_session() -> requests.Session:
         logger.debug("HTTP session initialized successfully")
 
     return _HTTP_SESSION
+
+
+def post_with_retries(url, retries=2, is_retryable=None, **kwargs):
+    """POSTs with the shared session, retrying temporary failures with exponential backoff.
+
+    Retries the statuses in RETRY_STATUSES, waiting as long as a Retry-After header asks (up to
+    MAX_RETRY_WAIT_SECONDS). is_retryable(response) can rule out a response, such as a 429 for an
+    exhausted quota. The session's adapter already retries failed connections.
+    """
+    session = get_http_session()
+    for attempt in range(retries + 1):
+        response = session.post(url, **kwargs)
+        if (response.status_code not in RETRY_STATUSES or attempt == retries
+                or (is_retryable and not is_retryable(response))):
+            return response
+        wait = min(_retry_after_seconds(response) or 2 ** attempt, MAX_RETRY_WAIT_SECONDS)
+        logger.warning(f"{url} returned {response.status_code}, retrying in {wait:g} seconds.")
+        time.sleep(wait)
+    return response
+
+
+def _retry_after_seconds(response):
+    try:
+        return float(response.headers.get("retry-after", ""))
+    except ValueError:
+        return None
 
 
 def close_http_session():

@@ -3,8 +3,6 @@ from utils.app_utils import resolve_path, get_font
 from plugins.base_plugin.base_plugin import BasePlugin
 from plugins.calendar.constants import LOCALE_MAP, FONT_SIZES
 from PIL import Image, ImageColor, ImageDraw, ImageFont
-import icalendar
-import recurring_ical_events
 from io import BytesIO
 import logging
 import requests
@@ -71,6 +69,7 @@ class Calendar(BasePlugin):
         return image
     
     def fetch_ics_events(self, calendar_urls, colors, tz, start_range, end_range):
+        import recurring_ical_events  # Loaded on first use to save memory.
         parsed_events = []
 
         for calendar_url, color in zip(calendar_urls, colors):
@@ -138,6 +137,7 @@ class Calendar(BasePlugin):
         return start, end, all_day
 
     def fetch_calendar(self, calendar_url):
+        import icalendar  # Loaded on first use to save memory.
         # workaround for webcal urls
         if calendar_url.startswith("webcal://"):
             calendar_url = calendar_url.replace("webcal://", "https://")
