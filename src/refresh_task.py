@@ -7,7 +7,7 @@ import pytz
 from concurrent.futures import Future
 from datetime import datetime, timedelta
 from plugins.plugin_registry import get_plugin_instance
-from utils.image_utils import compute_image_hash
+from utils.image_utils import compute_image_hash, get_image_enhancement
 from utils.time_utils import clock_interval_elapsed, seconds_until_next_interval
 from model import RefreshInfo, DisplayHold
 from refresh_schedule import (PRERENDER_ALWAYS, PRERENDER_JUST_IN_TIME, PRERENDER_ON_SCREEN, hold_expired,
@@ -90,6 +90,7 @@ class RefreshTask:
         self._button_future = None  # completes when the last button press's action is on screen
         self._button_pressed_at = 0
         self._working = False    # whether a job or display is running, for the busy LED
+        self._manual_settings = None  # plugin settings of the last manual update, for its image settings
 
     def start(self):
         """Starts the background thread for refreshing the display."""
@@ -130,6 +131,11 @@ class RefreshTask:
         with self.condition:
             self._wake_screen()
             return self._queue_job(lambda: self._run_manual(plugin_id, plugin_settings))
+
+    def redraw(self):
+        """Shows what's on screen again without re-rendering it, so new image settings take effect."""
+        with self.condition:
+            return self._queue_display()
 
     def show_image(self, image):
         """Displays an image without changing the schedule, e.g. the startup image. Returns a Future."""
@@ -608,7 +614,8 @@ class RefreshTask:
         with self.condition:
             self._set_hold(DisplayHold.MANUAL, plugin_id=plugin_id)
             self._owner_key = self._target(None).key
-        self._show(image, now, plugin_id)
+            self._manual_settings = plugin_settings
+        self._show(image, now, plugin_id, settings=plugin_settings)
 
     def _run_plugin_action(self, playlist, instance, action_id):
         now = self._now()
@@ -640,7 +647,7 @@ class RefreshTask:
             return None
         with Image.open(path) as img:
             image = img.copy()
-        self._show(image, now, target.plugin_id)
+        self._show(image, now, target.plugin_id, settings=self._manual_settings)
 
     def _render(self, instance, now, force):
         """Returns the instance's image, rendering it if forced, due, or missing."""
@@ -661,13 +668,21 @@ class RefreshTask:
             self.device_config.write_config()
         return image
 
-    def _show(self, image, now, plugin_id, playlist=None, instance=None):
-        """Displays the image unless the screen is off or it's already shown, then records it."""
-        image_hash = compute_image_hash(image)
+    def _show(self, image, now, plugin_id, playlist=None, instance=None, settings=None):
+        """Displays the image unless the screen is off or it's already shown, then records it.
+
+        settings are the plugin settings, used for an instance's own image settings; they default to
+        the instance's.
+        """
         with self.condition:
             screen_off = self.device_config.screen_off
             latest_hash = self.device_config.get_refresh_info().image_hash
             plugin_config = self.device_config.get_plugin(plugin_id) or {}
+            if settings is None and instance:
+                settings = instance.settings
+            enhancement = get_image_enhancement(settings, self.device_config.get_config("image_settings"))
+        # Includes the image settings, so changing them redraws the same image.
+        image_hash = compute_image_hash(image, enhancement)
 
         if screen_off:
             logger.info("Screen is off, not displaying.")
@@ -675,7 +690,8 @@ class RefreshTask:
         if image_hash == latest_hash:
             logger.info("Image already displayed, skipping refresh.")
         else:
-            self.display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []))
+            self.display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []),
+                                               enhancement=enhancement)
 
         with self.condition:
             if playlist and instance:

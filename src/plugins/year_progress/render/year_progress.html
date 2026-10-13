@@ -2,18 +2,21 @@
 
 {% block content %}
 
-<div class="progress-container">
+{% set show_percent = plugin_settings.showPercent != 'false' %}
+{% set show_days_left = plugin_settings.showDaysLeft != 'false' %}
+<div class="progress-container" style="--bar-color: {{ plugin_settings.barColor or '#cc2424' }};">
     <div class="progress-wrapper">
         <div class="progress-title">{{year}}</div>
         <div class="progress-subtitle">PROGRESS</div>
         <div class="progress-bar">
-            <div class="progress-fill" style="width: {{ year_percent }}%; background-color: {{plugin_settings.textColor}};"></div>
-            <div class="progress-remaining" style="background-image: radial-gradient({{plugin_settings.textColor}} 1px, transparent 1px);"></div>
+            <div class="progress-fill" style="width: {{ year_percent }}%;"></div>
         </div>
-        <div class="progress-labels">
-            <span>{{year_percent}}% DONE</span>
-            <span>{{days_left}} DAYS LEFT</span>
+        {% if show_percent or show_days_left %}
+        <div class="progress-labels{% if not (show_percent and show_days_left) %} single{% endif %}">
+            {% if show_percent %}<span><strong>{{year_percent}}%</strong> DONE</span>{% endif %}
+            {% if show_days_left %}<span><strong>{{days_left}}</strong> DAYS LEFT</span>{% endif %}
         </div>
+        {% endif %}
     </div>
 </div>
 

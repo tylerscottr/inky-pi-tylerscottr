@@ -2,6 +2,7 @@ import requests
 from PIL import Image, ImageEnhance, ImageOps, ImageFilter
 from io import BytesIO
 import os
+import json
 import logging
 import hashlib
 import tempfile
@@ -9,6 +10,12 @@ import subprocess
 import shutil
 
 logger = logging.getLogger(__name__)
+
+# The device's image settings, which a plugin instance can override with settings named
+# image_<key> while its image_override setting is "true".
+IMAGE_ENHANCEMENT_KEYS = ("saturation", "contrast", "sharpness", "brightness", "inky_saturation")
+IMAGE_SETTING_PREFIX = "image_"
+IMAGE_OVERRIDE_KEY = "image_override"
 
 def get_image(image_url):
     response = requests.get(image_url, timeout=30)
@@ -81,11 +88,27 @@ def apply_image_enhancement(img, image_settings={}):
 
     return img
 
-def compute_image_hash(image):
-    """Compute SHA-256 hash of an image."""
+def get_image_enhancement(plugin_settings, device_image_settings):
+    """Returns the image settings to display a plugin with: its own when it overrides the device's."""
+    device_image_settings = device_image_settings or {}
+    if not plugin_settings or plugin_settings.get(IMAGE_OVERRIDE_KEY) != "true":
+        return device_image_settings
+    own = {}
+    for key in IMAGE_ENHANCEMENT_KEYS:
+        value = plugin_settings.get(f"{IMAGE_SETTING_PREFIX}{key}")
+        try:
+            own[key] = float(value)
+        except (TypeError, ValueError):
+            pass
+    return {**device_image_settings, **own}
+
+def compute_image_hash(image, enhancement=None):
+    """Compute SHA-256 hash of an image, and of the image settings it's shown with if given."""
     image = image.convert("RGB")
-    img_bytes = image.tobytes()
-    return hashlib.sha256(img_bytes).hexdigest()
+    digest = hashlib.sha256(image.tobytes())
+    if enhancement:
+        digest.update(json.dumps(enhancement, sort_keys=True).encode())
+    return digest.hexdigest()
 
 def take_screenshot_html(html_str, dimensions, timeout_ms=None):
     image = None

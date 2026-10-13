@@ -1,0 +1,20 @@
+{% set saved = plugin_settings or {} %}
+<div class="form-group">
+    <label for="barColor" class="form-label">Bar Color:</label>
+    <input type="color" id="barColor" name="barColor" class="color-picker"
+           value="{{ saved.get('barColor') or '#cc2424' }}"/>
+</div>
+
+{# The hidden inputs carry the value so an unchecked box still saves "false". #}
+{% for name, label in [("showPercent", "Show Percent Done"), ("showDaysLeft", "Show Days Left")] %}
+<div class="form-group">
+    <label for="{{ name }}" class="form-label">{{ label }}:</label>
+    <div class="toggle-container">
+        <input type="hidden" name="{{ name }}" value="{{ 'false' if saved.get(name) == 'false' else 'true' }}">
+        <input type="checkbox" id="{{ name }}" class="toggle-checkbox"
+               {% if saved.get(name) != 'false' %}checked{% endif %}
+               onchange="this.previousElementSibling.value = this.checked">
+        <label for="{{ name }}" class="toggle-label"></label>
+    </div>
+</div>
+{% endfor %}

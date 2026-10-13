@@ -123,6 +123,9 @@ Spectra 6 Inky Impressions have an LED on GPIO 13. InkyPi uses it to show when i
 
 Dimming needs hardware PWM, so on Spectra Impressions `install.sh` and `update.sh` add `dtoverlay=pwm,pin=13,func=4` to `/boot/firmware/config.txt` (backing it up to `config.txt.inkypi-backup`) and offer to reboot. Pass `--no-led-dimming` to either script to leave that out, or to remove it if InkyPi added it before. Without it, the LED simply switches on and off.
 
+## Image Settings
+E-paper inks are muted, so photos look duller than on a phone. Raising saturation and contrast under Settings → Image Settings makes up for some of that; for photos, saturation 1.4–1.6 and contrast 1.1–1.2 are good starting points. Those settings apply to every plugin, which can hurt text-heavy plugins, so each plugin's settings page also has its own Image Settings to use instead, for example stronger colors for Unsplash only.
+
 ## Uninstall
 To install InkyPi, simply run the following command:
 

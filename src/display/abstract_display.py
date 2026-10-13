@@ -30,7 +30,7 @@ class AbstractDisplay:
         """
         raise NotImplementedError("Method 'initialize_display(...) must be provided in a subclass.")
 
-    def display_image(self, image, image_settings=[]):
+    def display_image(self, image, image_settings=[], enhancement=None):
         """
         Abstract method to display an image on the screen.  Implementations of this
         method should handle the device specific operations.
@@ -38,6 +38,7 @@ class AbstractDisplay:
         Args:
             image (PIL.Image): The image to be displayed.
             image_settings (list, optional): List of settings to modify how the image is displayed.
+            enhancement (dict, optional): The image settings in use, such as Inky driver saturation.
 
         Raises:
             NotImplementedError: If not implemented in a subclass.

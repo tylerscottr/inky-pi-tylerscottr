@@ -47,9 +47,11 @@ class FakePlugin:
 class FakeDisplayManager:
     def __init__(self):
         self.images = []
+        self.enhancements = []
 
-    def display_image(self, image, image_settings=None):
+    def display_image(self, image, image_settings=None, enhancement=None):
         self.images.append(image)
+        self.enhancements.append(enhancement)
 
 
 class Harness:
@@ -361,3 +363,61 @@ class TestHoldsAndButtons:
         h.playlist("Default").delete_plugin("clock", "b")
         h.run()
         assert h.config.display_hold is None
+
+
+class TestImageSettings:
+
+    DEVICE = {"saturation": 1.0, "contrast": 1.0, "inky_saturation": 0.5}
+
+    @pytest.fixture
+    def harness(self, tmp_path, monkeypatch):
+        return Harness(tmp_path, monkeypatch, [playlist("Default", [
+            instance("plain"),
+            instance("photo", image_override="true", image_saturation="1.5", image_contrast="1.2"),
+        ])], image_settings=self.DEVICE)
+
+    def test_instances_use_their_own_image_settings_only_when_overriding(self, harness):
+        h = harness
+        h.run()
+        h.task.perform_action("next_plugin")
+        h.run()
+        assert h.display.enhancements == [
+            self.DEVICE,
+            {"saturation": 1.5, "contrast": 1.2, "inky_saturation": 0.5},
+        ]
+
+    def test_manual_updates_use_the_submitted_image_settings_when_shown_again(self, harness):
+        h = harness
+        h.task.show_manual("clock", {"name": "m", "image_override": "true", "image_brightness": "1.1"})
+        h.run()
+        h.task.perform_action("screen_off")
+        h.run()
+        h.task.handle_button("A", long_press=False)
+        h.run()
+        assert h.display.enhancements[-1] == {**self.DEVICE, "brightness": 1.1}
+
+    def test_redraw_shows_new_image_settings_without_rendering(self, harness):
+        h = harness
+        h.run()
+        h.config.update_value("image_settings", {**self.DEVICE, "contrast": 1.3})
+        h.task.redraw()
+        h.run()
+        assert h.plugin.rendered == ["plain"]
+        assert h.display.enhancements == [self.DEVICE, {**self.DEVICE, "contrast": 1.3}]
+
+    def test_redraw_skips_the_display_when_nothing_changed(self, harness):
+        h = harness
+        h.run()
+        h.task.redraw()
+        h.run()
+        assert len(h.display.images) == 1
+
+    def test_changing_image_settings_redraws_the_same_image(self, harness):
+        h = harness
+        image = Image.new("RGB", (8, 8))
+        h.task._show(image, h.now, "clock")
+        h.task._show(image, h.now, "clock")
+        assert len(h.display.images) == 1
+        h.config.update_value("image_settings", {**self.DEVICE, "contrast": 1.3})
+        h.task._show(image, h.now, "clock")
+        assert len(h.display.images) == 2

@@ -1,3 +1,4 @@
+{% from 'image_settings_fields.html' import image_settings_fields %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -165,6 +166,14 @@
             content.style.display = content.style.display === "block" ? "none" : "block";
             icon.textContent = content.style.display === "block" ? "▲" : "▼";
         }
+
+        function updateImageOverrideFields() {
+            const fields = document.getElementById('imageOverrideFields');
+            const enabled = document.getElementById('image_override').checked;
+            fields.disabled = !enabled;
+            fields.style.display = enabled ? '' : 'none';
+        }
+        document.addEventListener('DOMContentLoaded', updateImageOverrideFields);
 
         function selectedFrame(element) {
             if (!element) return; // Guard clause for null element
@@ -398,6 +407,23 @@
                     </div>
                 </div>
                 {% endif %}
+
+                <!-- Image settings used instead of the device's while this plugin is on screen -->
+                <div class="collapsible">
+                    <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+                        Image Settings <span class="collapsible-icon">▼</span>
+                    </button>
+                    <div class="settings-container collapsible-content">
+                        <div class="form-group nowrap">
+                            <input type="checkbox" id="image_override" name="image_override" value="true" {% if image_override %}checked{% endif %} onchange="updateImageOverrideFields()">
+                            <label for="image_override" style="white-space: normal;">Use these instead of the image settings in Settings</label>
+                        </div>
+                        <!-- Disabled while off, so the device's settings aren't saved as this plugin's -->
+                        <fieldset id="imageOverrideFields" style="border: none; padding: 0; margin: 0; min-width: 0;">
+                            {{ image_settings_fields(image_values, show_inky_saturation, prefix='image_') }}
+                        </fieldset>
+                    </div>
+                </div>
             </div>
 
             <!-- Hidden input to pass plugin id -->

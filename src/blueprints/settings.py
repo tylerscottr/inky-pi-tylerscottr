@@ -149,9 +149,12 @@ def save_settings():
             settings["image_settings"]["inky_saturation"] = float(form_data.get("inky_saturation", "0.5"))
         previous_buttons = get_button_config(device_config)
         previous_led = get_led_config(device_config)
+        previous_image_settings = device_config.get_config("image_settings")
         device_config.update_config(settings)
 
         current_app.config['REFRESH_TASK'].signal_config_change()
+        if settings["image_settings"] != previous_image_settings:
+            current_app.config['REFRESH_TASK'].redraw()
         if get_button_config(device_config) != previous_buttons:
             current_app.config['BUTTON_SERVICE'].reload()
         if get_led_config(device_config) != previous_led:

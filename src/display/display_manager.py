@@ -62,7 +62,7 @@ class DisplayManager:
         """Returns the GPIO pin of an LED built into the display, or None."""
         return self.display.default_led_pin()
 
-    def display_image(self, image, image_settings=[]):
+    def display_image(self, image, image_settings=[], enhancement=None):
 
         """
         Delegates image rendering to the appropriate display instance.
@@ -70,6 +70,8 @@ class DisplayManager:
         Args:
             image (PIL.Image): The image to be displayed.
             image_settings (list, optional): List of settings to modify image rendering.
+            enhancement (dict, optional): Saturation, contrast, and the like to use instead of the
+                device's image settings.
 
         Raises:
             ValueError: If no valid display instance is found.
@@ -86,7 +88,9 @@ class DisplayManager:
         image = change_orientation(image, self.device_config.get_config("orientation"))
         image = resize_image(image, self.device_config.get_resolution(), image_settings)
         if self.device_config.get_config("inverted_image"): image = image.rotate(180)
-        image = apply_image_enhancement(image, self.device_config.get_config("image_settings"))
+        if enhancement is None:
+            enhancement = self.device_config.get_config("image_settings") or {}
+        image = apply_image_enhancement(image, enhancement)
 
         # Pass to the concrete instance to render to the device.
-        self.display.display_image(image, image_settings)
+        self.display.display_image(image, image_settings, enhancement)

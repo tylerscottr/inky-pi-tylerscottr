@@ -5,11 +5,11 @@
 <script src="{{static_dir}}/scripts/calendar.min.js" charset="UTF-8"></script>
 
 <div id="calendar" class="calendar" style="
---fc-page-bg-color: {{ plugin_settings.backgroundColor or white }};
---fc-border-color: {{ plugin_settings.textColor }};
+--fc-page-bg-color: {{ plugin_settings.backgroundColor or 'white' }};
+--fc-border-color: {{ plugin_settings.textColor or 'black' }};
 --fc-today-bg-color: '';
---fc-now-indicator-color: {{ plugin_settings.nowIndicatorColor or red }};
---fc-event-border-color: {{ plugin_settings.textColor or white }};
+--fc-now-indicator-color: {{ plugin_settings.nowIndicatorColor or 'red' }};
+--fc-event-border-color: {{ plugin_settings.textColor or 'white' }};
 
 --fc-small-font-size: {{ 0.85 * font_scale }}em;
 --fc-title-font-size: {{ 1.75 * font_scale }}em;

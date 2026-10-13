@@ -57,17 +57,18 @@ class InkyDisplay(AbstractDisplay):
     def default_led_pin(self):
         return 13 if self._display_variant() in SPECTRA_VARIANTS else None
 
-    def display_image(self, image, image_settings=[]):
-        
+    def display_image(self, image, image_settings=[], enhancement=None):
+
         """
         Displays the provided image on the Inky display.
 
-        The image has been processed by adjusting orientation and resizing 
+        The image has been processed by adjusting orientation and resizing
         before being sent to the display.
 
         Args:
             image (PIL.Image): The image to be displayed.
             image_settings (list, optional): Additional settings to modify image rendering.
+            enhancement (dict, optional): The image settings in use, including inky_saturation.
 
         Raises:
             ValueError: If no image is provided.
@@ -78,7 +79,7 @@ class InkyDisplay(AbstractDisplay):
             raise ValueError(f"No image provided.")
 
         # Display the image on the Inky display
-        inky_saturation = self.device_config.get_config('image_settings').get("inky_saturation", 0.5)
+        inky_saturation = (enhancement or {}).get("inky_saturation", 0.5)
         logger.info(f"Inky Saturation: {inky_saturation}")
         self.inky_display.set_image(image, saturation=inky_saturation)
         self.inky_display.show()

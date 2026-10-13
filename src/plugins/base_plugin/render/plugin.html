@@ -21,13 +21,13 @@
         {% if plugin_settings.selectedFrame == 'Rectangle' %}rectangle-frame{% endif %}"
         style="padding: 1.5vw;
         {% if plugin_settings.backgroundOption == 'color' %}
-            background-color: {{ plugin_settings.backgroundColor }};
+            background-color: {{ plugin_settings.backgroundColor or 'white' }};
         {% elif plugin_settings.backgroundOption == 'image' %}
             background-image: url('{{ plugin_settings.backgroundImageFile }}');
             background-size: cover;
             background-position: center;
         {% endif %}
-        color: {{ plugin_settings.textColor }};
+        color: {{ plugin_settings.textColor or 'black' }};
 
         margin-top: {{ plugin_settings.topMargin or plugin_settings.margin or 5 }}px;
         margin-bottom: {{ plugin_settings.bottomMargin or plugin_settings.margin or 5 }}px;

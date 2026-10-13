@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app, render_template, sen
 from concurrent.futures import TimeoutError as FutureTimeoutError
 from plugins.plugin_registry import get_plugin_instance
 from utils.app_utils import resolve_path, handle_request_files, parse_form
+from utils.image_utils import IMAGE_OVERRIDE_KEY, get_image_enhancement
 from buttons import BUTTONS, is_valid_action
 import json
 import os
@@ -80,6 +81,13 @@ def plugin_page(plugin_id):
                 template_params["plugin_settings"] = plugin_instance.settings
                 template_params["plugin_instance"] = plugin_instance_name
                 template_params["refresh_settings"] = plugin_instance.refresh
+
+            # The instance's own image settings, starting from the device's until it has some.
+            saved_settings = template_params.get("plugin_settings") or {}
+            template_params["image_override"] = saved_settings.get(IMAGE_OVERRIDE_KEY) == "true"
+            template_params["image_values"] = get_image_enhancement(
+                {**saved_settings, IMAGE_OVERRIDE_KEY: "true"}, device_config.get_config("image_settings"))
+            template_params["show_inky_saturation"] = device_config.get_config("display_type", "inky") == "inky"
 
             template_params["playlists"] = playlist_manager.get_playlist_names()
         except Exception as e:
@@ -231,10 +239,15 @@ def update_plugin_instance(instance_name):
         plugin_settings = form_data
         plugin_settings.update(handle_request_files(request.files, request.form))
 
+        device_image_settings = device_config.get_config("image_settings")
+        previous_enhancement = get_image_enhancement(plugin_instance.settings, device_image_settings)
         if plugin_settings:  # Only update if there are actual plugin settings
             plugin_instance.settings = plugin_settings
 
         device_config.write_config()
+        # Redraws the screen if this instance is on it, so its new image settings show.
+        if get_image_enhancement(plugin_instance.settings, device_image_settings) != previous_enhancement:
+            current_app.config['REFRESH_TASK'].redraw()
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
     return jsonify({"success": True, "message": f"Updated plugin instance {instance_name}."})

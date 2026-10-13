@@ -95,7 +95,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. Plugin generates base image
 2. Display manager applies orientation changes
 3. Image resized to display resolution
-4. Optional inversion/rotation applied
+4. Optional inversion/rotation applied, then the image settings: the instance's own `image_*` settings when `image_override` is on, else the device's (`get_image_enhancement` in `utils/image_utils.py`)
 5. Image saved to `static/images/current_image.png`
 6. Passed to hardware-specific display driver
 
