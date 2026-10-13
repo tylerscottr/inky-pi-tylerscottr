@@ -25,6 +25,8 @@ from werkzeug.serving import is_running_from_reloader
 from config import Config
 from display.display_manager import DisplayManager
 from refresh_task import RefreshTask
+from buttons import ButtonService, default_button_config
+from led import LedController, default_led_config
 from blueprints.main import main_bp
 from blueprints.settings import settings_bp
 from blueprints.plugin import plugin_bp
@@ -62,7 +64,15 @@ app.jinja_loader = ChoiceLoader([FileSystemLoader(directory) for directory in te
 
 device_config = Config()
 display_manager = DisplayManager(device_config)
-refresh_task = RefreshTask(device_config, display_manager)
+led = LedController(device_config)
+refresh_task = RefreshTask(device_config, display_manager, led)
+button_service = ButtonService(device_config, refresh_task.handle_button)
+
+# Start with the display's built-in buttons and LED until the user saves their own settings.
+if device_config.get_config("buttons", default=None) is None:
+    device_config.update_value("buttons", default_button_config(display_manager.default_button_pins()), write=True)
+if device_config.get_config("led", default=None) is None:
+    device_config.update_value("led", default_led_config(display_manager.default_led_pin()), write=True)
 
 load_plugins(device_config.get_plugins())
 
@@ -70,6 +80,9 @@ load_plugins(device_config.get_plugins())
 app.config['DEVICE_CONFIG'] = device_config
 app.config['DISPLAY_MANAGER'] = display_manager
 app.config['REFRESH_TASK'] = refresh_task
+app.config['BUTTON_SERVICE'] = button_service
+app.config['LED'] = led
+app.config['DEV_MODE'] = DEV_MODE
 
 # Set additional parameters
 app.config['MAX_FORM_PARTS'] = 10_000
@@ -86,15 +99,17 @@ register_heif_opener()
 
 if __name__ == '__main__':
 
-    # start the background refresh task
-    refresh_task.start()
-
-    # display default inkypi image on startup
+    # display default inkypi image on startup, queued ahead of any scheduled refresh
     if device_config.get_config("startup") is True:
         logger.info("Startup flag is set, displaying startup image")
         img = generate_startup_image(device_config.get_resolution())
-        display_manager.display_image(img)
+        refresh_task.show_image(img)
         device_config.update_value("startup", False, write=True)
+
+    # start the LED, background refresh task, and buttons
+    led.start()
+    refresh_task.start()
+    button_service.start()
 
     try:
         # Run the Flask app
@@ -112,6 +127,9 @@ if __name__ == '__main__':
             except:
                 pass  # Ignore if we can't get the IP
 
-        serve(app, host="0.0.0.0", port=PORT, threads=1)
+        # Several threads, so a page can load while another request waits for a render.
+        serve(app, host="0.0.0.0", port=PORT, threads=4)
     finally:
+        button_service.stop()
         refresh_task.stop()
+        led.stop()

@@ -1,13 +1,33 @@
 from flask import Blueprint, request, jsonify, current_app, render_template, send_file
 import os
 from datetime import datetime
+from buttons import BUTTONS
 
 main_bp = Blueprint("main", __name__)
 
 @main_bp.route('/')
 def main_page():
     device_config = current_app.config['DEVICE_CONFIG']
-    return render_template('inky.html', config=device_config.get_config(), plugins=device_config.get_plugins())
+    return render_template('inky.html', config=device_config.get_config(), plugins=device_config.get_plugins(),
+                           status=current_app.config['REFRESH_TASK'].get_status(),
+                           simulated_buttons=BUTTONS if current_app.config.get('DEV_MODE') else [])
+
+@main_bp.route('/api/resume_schedule', methods=['POST'])
+def resume_schedule():
+    current_app.config['REFRESH_TASK'].resume_schedule()
+    return jsonify({"success": True})
+
+@main_bp.route('/api/button', methods=['POST'])
+def press_button():
+    """Simulates a hardware button press in development mode."""
+    if not current_app.config.get('DEV_MODE'):
+        return jsonify({"error": "Simulated buttons are only available in development mode"}), 404
+    data = request.get_json() or {}
+    button = data.get("button")
+    if button not in BUTTONS:
+        return jsonify({"error": "Unknown button"}), 400
+    current_app.config['REFRESH_TASK'].handle_button(button, long_press=bool(data.get("long_press")))
+    return jsonify({"success": True})
 
 @main_bp.route('/api/current_image')
 def get_current_image():

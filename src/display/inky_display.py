@@ -5,6 +5,13 @@ from display.abstract_display import AbstractDisplay
 
 logger = logging.getLogger(__name__)
 
+# EEPROM display variants of the Inky Impression boards, which have four buttons.
+IMPRESSION_VARIANTS = {14, 15, 16, 20, 21, 22, 25, 26, 27}
+# The 13.3" Impression's driver uses GPIO 16 as a chip select, so its button C is on GPIO 25.
+IMPRESSION_13_VARIANTS = {21, 27}
+# Spectra 6 Impressions have an LED on GPIO 13. install/led_dimming.sh lists the same variants.
+SPECTRA_VARIANTS = {21, 22, 25, 26, 27}
+
 class InkyDisplay(AbstractDisplay):
 
     """
@@ -36,6 +43,19 @@ class InkyDisplay(AbstractDisplay):
                 "resolution",
                 [int(self.inky_display.width), int(self.inky_display.height)], 
                 write=True)
+
+    def _display_variant(self):
+        eeprom = getattr(self.inky_display, "eeprom", None)
+        return getattr(eeprom, "display_variant", None)
+
+    def default_button_pins(self):
+        variant = self._display_variant()
+        if variant not in IMPRESSION_VARIANTS:
+            return {}
+        return {"A": 5, "B": 6, "C": 25 if variant in IMPRESSION_13_VARIANTS else 16, "D": 24}
+
+    def default_led_pin(self):
+        return 13 if self._display_variant() in SPECTRA_VARIANTS else None
 
     def display_image(self, image, image_settings=[]):
         

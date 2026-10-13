@@ -54,8 +54,16 @@ class DisplayManager:
         else:
             raise ValueError(f"Unsupported display type: {display_type}")
 
+    def default_button_pins(self):
+        """Returns the GPIO pins of buttons built into the display, as {"A": pin, ...}."""
+        return self.display.default_button_pins()
+
+    def default_led_pin(self):
+        """Returns the GPIO pin of an LED built into the display, or None."""
+        return self.display.default_led_pin()
+
     def display_image(self, image, image_settings=[]):
-        
+
         """
         Delegates image rendering to the appropriate display instance.
 

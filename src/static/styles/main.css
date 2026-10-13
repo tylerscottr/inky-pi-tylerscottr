@@ -272,12 +272,30 @@ body {
     flex: auto;
 }
 
+/* A row with a dropdown or text field can shrink with it, even when nested in another row. */
+.form-group:has(> select.form-input, > input[type="text"].form-input) {
+    min-width: 0;
+}
+
 .form-group .nowrap {
     flex-wrap: nowrap;
 }
 
 .nowrap {
     flex-wrap: nowrap;
+}
+
+/* Keeps a label next to its field when a form row wraps on narrow screens */
+.field-pair {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: auto;
+}
+
+.form-input.minutes-input {
+    flex: none;
+    width: 4em;
 }
 
 .form-group label {
@@ -444,6 +462,11 @@ small {
     background-color: var(--input-bg);
     color: var(--text-primary);
     transition: all 0.3s ease;
+}
+
+/* Lets a dropdown with long options shrink to fit narrow screens. */
+select.form-input {
+    min-width: 0;
 }
 
 .form-input:focus {
@@ -1222,4 +1245,25 @@ html[data-theme="dark"] .settings-button.dark-mode-toggle::before {
 
 .sort-hint.visible {
     display: block;
+}
+
+/* Info icons and the popup that shows their text (scripts/info_tips.js) */
+.info-tip {
+    cursor: pointer;
+}
+
+.info-tip-popup {
+    display: none;
+    position: fixed;
+    z-index: 2000;
+    max-width: min(280px, calc(100vw - 16px));
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--modal-bg);
+    color: var(--text-primary);
+    box-shadow: 0 4px 12px var(--shadow-medium);
+    font-size: 14px;
+    font-weight: normal;
+    line-height: 1.4;
 }

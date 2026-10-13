@@ -1,5 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app, render_template, Response
-from utils.time_utils import calculate_seconds
+from buttons import BUTTONS, GENERIC_ACTIONS, PLAYLIST_ACTION_PREFIX, get_button_config, is_valid_action
+from led import LED_USES, get_led_config
+from refresh_schedule import DEFAULT_HOLD_SETTINGS, HOLD_FIXED, HOLD_MINIMUM, PRERENDER_MODES, PRERENDER_ON_SCREEN
 from datetime import datetime, timedelta
 import os
 import pytz
@@ -29,7 +31,79 @@ settings_bp = Blueprint("settings", __name__)
 def settings_page():
     device_config = current_app.config['DEVICE_CONFIG']
     timezones = sorted(pytz.all_timezones_set)
-    return render_template('settings.html', device_settings=device_config.get_config(), timezones = timezones)
+    playlists = device_config.get_playlist_manager().playlists
+    return render_template(
+        'settings.html',
+        device_settings=device_config.get_config(),
+        timezones=timezones,
+        hold_settings={**DEFAULT_HOLD_SETTINGS, **(device_config.get_config("hold_settings", default=None) or {})},
+        prerender_mode=device_config.get_config("prerender_mode", default=PRERENDER_ON_SCREEN),
+        button_config=get_button_config(device_config),
+        led_config=get_led_config(device_config),
+        led_status=current_app.config['LED'].status,
+        buttons=BUTTONS,
+        button_actions=GENERIC_ACTIONS + [
+            {"id": PLAYLIST_ACTION_PREFIX + p.id, "label": f"Playlist: {p.name}"} for p in playlists])
+
+def _parse_hold_settings(form_data):
+    """Returns the hold settings from the form, or raises ValueError."""
+    mode = form_data.get("holdMode")
+    if mode not in [HOLD_FIXED, HOLD_MINIMUM]:
+        raise ValueError("Hold mode is required")
+    settings = {"mode": mode}
+    for key, field in [("fixed_minutes", "holdFixedMinutes"), ("minimum_minutes", "holdMinimumMinutes"),
+                       ("maximum_minutes", "holdMaximumMinutes")]:
+        value = form_data.get(field, "")
+        if not value.isnumeric() or int(value) <= 0:
+            raise ValueError("Hold durations must be whole minutes")
+        settings[key] = int(value)
+    if settings["minimum_minutes"] > settings["maximum_minutes"]:
+        raise ValueError("The minimum hold can't be longer than the maximum")
+    return settings
+
+def _parse_button_settings(form_data, playlist_ids):
+    """Returns the button settings from the form, or raises ValueError."""
+    try:
+        long_press_seconds = float(form_data.get("longPressSeconds", ""))
+    except ValueError:
+        raise ValueError("Long press time is required")
+    if not 0.3 <= long_press_seconds <= 5:
+        raise ValueError("Long press time must be between 0.3 and 5 seconds")
+
+    settings = {"long_press_seconds": long_press_seconds}
+    pins = []
+    for button in BUTTONS:
+        pin = form_data.get(f"button{button}Pin", "").strip()
+        if pin and (not pin.isnumeric() or int(pin) > 27):
+            raise ValueError(f"Button {button} pin must be a GPIO number from 0 to 27")
+        if pin and int(pin) in pins:
+            raise ValueError(f"GPIO {pin} is used by more than one button")
+        pins.append(int(pin) if pin else None)
+
+        actions = {press: form_data.get(f"button{button}{press.title()}") for press in ["short", "long"]}
+        for action in actions.values():
+            if not action or not is_valid_action(action, playlist_ids):
+                raise ValueError(f"Invalid action for button {button}")
+        settings[button] = {"pin": pins[-1], **actions}
+    return settings
+
+def _parse_led_settings(form_data, button_settings):
+    """Returns the LED settings from the form, or raises ValueError."""
+    pin = form_data.get("ledPin", "").strip()
+    if pin and (not pin.isnumeric() or int(pin) > 27):
+        raise ValueError("LED pin must be a GPIO number from 0 to 27")
+    pin = int(pin) if pin else None
+    if pin is not None and any(button_settings[button]["pin"] == pin for button in BUTTONS):
+        raise ValueError(f"GPIO {pin} is used by a button")
+
+    brightness = form_data.get("ledMaxBrightness", "")
+    if not brightness.isnumeric() or not 1 <= int(brightness) <= 100:
+        raise ValueError("LED brightness must be from 1 to 100%")
+
+    settings = {"pin": pin, "max_brightness": int(brightness)}
+    for use in LED_USES:
+        settings[use] = form_data.get(f"led_{use}") == "on"
+    return settings
 
 @settings_bp.route('/save_settings', methods=['POST'])
 def save_settings():
@@ -38,19 +112,20 @@ def save_settings():
     try:
         form_data = request.form.to_dict()
 
-        unit, interval, time_format = form_data.get('unit'), form_data.get("interval"), form_data.get("timeFormat")
-        if not unit or unit not in ["minute", "hour"]:
-            return jsonify({"error": "Plugin cycle interval unit is required"}), 400
-        if not interval or not interval.isnumeric():
-            return jsonify({"error": "Refresh interval is required"}), 400
+        time_format = form_data.get("timeFormat")
         if not form_data.get("timezoneName"):
             return jsonify({"error": "Time Zone is required"}), 400
         if not time_format or time_format not in ["12h", "24h"]:
             return jsonify({"error": "Time format is required"}), 400
-        previous_interval_seconds = device_config.get_config("plugin_cycle_interval_seconds")
-        plugin_cycle_interval_seconds = calculate_seconds(int(interval), unit)
-        if plugin_cycle_interval_seconds > 86400 or plugin_cycle_interval_seconds <= 0:
-            return jsonify({"error": "Plugin cycle interval must be less than 24 hours"}), 400
+        if form_data.get("prerenderMode") not in PRERENDER_MODES:
+            return jsonify({"error": "Background rendering mode is required"}), 400
+        try:
+            hold_settings = _parse_hold_settings(form_data)
+            playlist_ids = [p.id for p in device_config.get_playlist_manager().playlists]
+            button_settings = _parse_button_settings(form_data, playlist_ids)
+            led_settings = _parse_led_settings(form_data, button_settings)
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
 
         settings = {
             "name": form_data.get("deviceName"),
@@ -59,7 +134,10 @@ def save_settings():
             "log_system_stats": form_data.get("logSystemStats"),
             "timezone": form_data.get("timezoneName"),
             "time_format": form_data.get("timeFormat"),
-            "plugin_cycle_interval_seconds": plugin_cycle_interval_seconds,
+            "hold_settings": hold_settings,
+            "prerender_mode": form_data.get("prerenderMode"),
+            "buttons": button_settings,
+            "led": led_settings,
             "image_settings": {
                 "saturation": float(form_data.get("saturation", "1.0")),
                 "brightness": float(form_data.get("brightness", "1.0")),
@@ -69,12 +147,15 @@ def save_settings():
         }
         if "inky_saturation" in form_data:
             settings["image_settings"]["inky_saturation"] = float(form_data.get("inky_saturation", "0.5"))
+        previous_buttons = get_button_config(device_config)
+        previous_led = get_led_config(device_config)
         device_config.update_config(settings)
 
-        if plugin_cycle_interval_seconds != previous_interval_seconds:
-            # wake the background thread up to signal interval config change
-            refresh_task = current_app.config['REFRESH_TASK']
-            refresh_task.signal_config_change()
+        current_app.config['REFRESH_TASK'].signal_config_change()
+        if get_button_config(device_config) != previous_buttons:
+            current_app.config['BUTTON_SERVICE'].reload()
+        if get_led_config(device_config) != previous_led:
+            current_app.config['LED'].reload()
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 500
     except Exception as e:

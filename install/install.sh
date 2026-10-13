@@ -5,7 +5,9 @@
 # Description: This script automates the installation of InkyPI and creation of
 #              the InkyPI service.
 #
-# Usage: ./install.sh [-W <waveshare_device>]
+# Usage: ./install.sh [-W <waveshare_device>] [--no-led-dimming]
+#        --no-led-dimming      (optional) Don't add the hardware PWM overlay for
+#                               the Inky Impression LED to config.txt.
 #        -W <waveshare_device> (optional) Install for a Waveshare device,
 #                               specifying the device model type, e.g. epd7in3e.
 #
@@ -44,6 +46,9 @@ SERVICE_FILE_TARGET="/etc/systemd/system/$SERVICE_FILE"
 
 APT_REQUIREMENTS_FILE="$SCRIPT_DIR/debian-requirements.txt"
 PIP_REQUIREMENTS_FILE="$SCRIPT_DIR/requirements.txt"
+
+LED_DIMMING=true
+source "$SCRIPT_DIR/led_dimming.sh"
 
 #
 # Additional requirements for Waveshare support.
@@ -87,8 +92,19 @@ resolve_waveshare_type() {
     fi
 }
 
-# Parse the arguments, looking for the -W option.
+# Parse the arguments, looking for the -W and --no-led-dimming options.
 parse_arguments() {
+    # getopts only handles short options, so take out --no-led-dimming first.
+    local args=()
+    for arg in "$@"; do
+        if [[ "$arg" == "--no-led-dimming" ]]; then
+            LED_DIMMING=false
+        else
+            args+=("$arg")
+        fi
+    done
+    set -- "${args[@]}"
+
     while getopts ":W:" opt; do
         case $opt in
             W) resolve_waveshare_type "$OPTARG"
@@ -424,6 +440,12 @@ setup_earlyoom_service
 install_src
 install_cli
 create_venv
+# The Inky LED only exists on Inky displays, and the check needs the venv's inky library.
+if [[ -z "$WS_TYPE" && "$LED_DIMMING" == true ]]; then
+  enable_led_dimming
+else
+  disable_led_dimming
+fi
 install_executable
 install_config
 # update the config file with additional WS if defined.

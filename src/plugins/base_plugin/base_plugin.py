@@ -54,6 +54,14 @@ class BasePlugin:
     def generate_image(self, settings, device_config):
         raise NotImplementedError("generate_image must be implemented by subclasses")
 
+    def get_button_actions(self):
+        """Returns the actions this plugin offers for button long presses, as [{"id", "label"}]."""
+        return []
+
+    def run_button_action(self, action_id, settings, device_config):
+        """Runs one of the actions from get_button_actions() and returns the image to display."""
+        raise NotImplementedError(f"Plugin '{self.get_plugin_id()}' has no button action '{action_id}'")
+
     def cleanup(self, settings):
         """Optional cleanup method that plugins can override to delete associated resources.
 

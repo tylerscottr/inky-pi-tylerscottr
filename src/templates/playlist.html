@@ -16,6 +16,7 @@
     <link rel= "stylesheet" type= "text/css" href= "{{ url_for('static',filename='styles/main.css') }}">
     <script src="{{ url_for('static', filename='scripts/dark_mode.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/response_modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/info_tips.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/refresh_settings_manager.js') }}"></script>
     <style>
         /* Plugin Instance Thumbnail */
@@ -182,6 +183,26 @@
             }
         }
 
+        function setCycleInterval(seconds) {
+            const hours = seconds % 3600 === 0;
+            document.getElementById("cycle_interval").value = hours ? seconds / 3600 : Math.round(seconds / 60);
+            document.getElementById("cycle_unit").value = hours ? "hour" : "minute";
+        }
+
+        function getCycleInterval() {
+            return {
+                cycle_interval: document.getElementById("cycle_interval").value,
+                cycle_unit: document.getElementById("cycle_unit").value,
+                scheduled: !document.getElementById("buttons_only").checked
+            };
+        }
+
+        // A buttons-only playlist keeps its times for later, but they don't apply.
+        function setButtonsOnly(buttonsOnly) {
+            document.getElementById("buttons_only").checked = buttonsOnly;
+            document.getElementById("schedule_window").checked = !buttonsOnly;
+        }
+
         // Open modal for **creating** a new playlist
         function openCreateModal() {
             document.getElementById("modalTitle").textContent = "New Playlist";
@@ -189,6 +210,8 @@
             document.getElementById("editingPlaylistName").value = ""; // Empty value means it's new
             document.getElementById("start_time").value = "00:00";
             document.getElementById("end_time").value = "24:00";
+            setCycleInterval(3600);
+            setButtonsOnly(false);
 
             document.getElementById("saveButton").setAttribute("onclick", "createPlaylist()");
             document.getElementById("deleteButton").classList.add("hidden"); // Hide delete button
@@ -197,12 +220,14 @@
         }
 
         // Open modal for **editing** an existing playlist
-        function openEditModal(playlistName, startTime, endTime) {
+        function openEditModal(playlistName, startTime, endTime, cycleIntervalSeconds, scheduled) {
             document.getElementById("modalTitle").textContent = "Update Playlist";
             document.getElementById("playlist_name").value = playlistName;
             document.getElementById("editingPlaylistName").value = playlistName;
             document.getElementById("start_time").value = startTime;
             document.getElementById("end_time").value = endTime;
+            setCycleInterval(cycleIntervalSeconds);
+            setButtonsOnly(!scheduled);
 
             document.getElementById("saveButton").setAttribute("onclick", "updatePlaylist()");
             document.getElementById("deleteButton").classList.remove("hidden"); // Show delete button
@@ -231,7 +256,7 @@
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ playlist_name: playlistName, start_time: startTime, end_time: endTime })
+                    body: JSON.stringify({ playlist_name: playlistName, start_time: startTime, end_time: endTime, ...getCycleInterval() })
                 });
 
                 const result = await response.json();
@@ -260,13 +285,33 @@
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ new_name: newName, start_time: startTime, end_time: endTime })
+                    body: JSON.stringify({ new_name: newName, start_time: startTime, end_time: endTime, ...getCycleInterval() })
                 });
 
                 const result = await response.json();
                 if (response.ok) {
                     closeModal(); // Close the modal after success
                     sessionStorage.setItem("storedMessage", JSON.stringify({ type: "success", text: `Success! ${result.message}` }));
+                    location.reload();
+                } else {
+                    showResponseModal('failure', `Error!  ${result.error}`);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert('An error occurred while processing your request.');
+            }
+        }
+
+        async function movePlaylist(name, offset) {
+            try {
+                const response = await fetch("{{ url_for('playlist.move_playlist', playlist_name='') }}" + encodeURIComponent(name), {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ offset: offset })
+                });
+
+                const result = await response.json();
+                if (response.ok) {
                     location.reload();
                 } else {
                     showResponseModal('failure', `Error!  ${result.error}`);
@@ -333,7 +378,8 @@
                     const pluginId = this.dataset.pluginId;
                     const instanceName = this.dataset.instance;
                     const refreshSettings = JSON.parse(this.dataset.refresh);
-                    openRefreshModal(playlistName, pluginId, instanceName, refreshSettings);
+                    const buttonActions = JSON.parse(this.dataset.buttonActions);
+                    openRefreshModal(playlistName, pluginId, instanceName, refreshSettings, buttonActions);
                 });
             });
         });
@@ -346,12 +392,40 @@
         // Initialize refresh settings manager
         const playlistRefreshManager = createRefreshSettingsManager('refreshSettingsModal', 'modal');
 
+        const genericButtonActions = {{ generic_actions | tojson }};
+        const pluginButtonActions = {{ plugin_button_actions | tojson }};
+        const playlistButtonActions = [
+            {% for playlist in playlist_config.playlists %}
+            { id: {{ ("playlist:" ~ playlist.id) | tojson }}, label: {{ ("Playlist: " ~ playlist.name) | tojson }} },
+            {% endfor %}
+        ];
+
+        // Fill the long press dropdowns with the actions available to this plugin.
+        function populateLongPressSelects(pluginId, buttonActions) {
+            const pluginActions = (pluginButtonActions[pluginId] || []).map(a => ({ id: `plugin:${a.id}`, label: a.label }));
+            const actions = [...genericButtonActions, ...playlistButtonActions, ...pluginActions];
+            document.querySelectorAll('.long-press-select').forEach(select => {
+                select.innerHTML = '';
+                actions.forEach(action => select.add(new Option(action.label, action.id)));
+                select.value = buttonActions[select.dataset.button] || 'none';
+            });
+        }
+
+        function getLongPressActions() {
+            const actions = {};
+            document.querySelectorAll('.long-press-select').forEach(select => {
+                actions[select.dataset.button] = select.value;
+            });
+            return actions;
+        }
+
         // Function to open refresh settings modal from playlist view
-        function openRefreshModal(playlistName, pluginId, instanceName, refreshSettings) {
+        function openRefreshModal(playlistName, pluginId, instanceName, refreshSettings, buttonActions) {
             currentEditPlaylist = playlistName;
             currentEditPluginId = pluginId;
             currentEditInstance = instanceName;
 
+            populateLongPressSelects(pluginId, buttonActions);
             playlistRefreshManager.open({ refreshSettings });
         }
 
@@ -364,8 +438,9 @@
                 const data = new FormData();
                 data.append('plugin_id', currentEditPluginId);
                 data.append('refresh_settings', JSON.stringify(formData));
+                data.append('button_actions', JSON.stringify(getLongPressActions()));
 
-                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + currentEditInstance, {
+                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(currentEditInstance), {
                     method: 'PUT',
                     body: data
                 });
@@ -403,7 +478,18 @@
             <div class="playlist-item {% if playlist.name == playlist_config.active_playlist %}active{% endif %}">
                     <div class="playlist-header">
                         <span class="playlist-title">{{ playlist.name }}</span>
-                        <button class="edit-button" onclick="openEditModal('{{ playlist.name }}', '{{ playlist.start_time }}','{{ playlist.end_time }}')"><img src="{{ url_for('static', filename='icons/settings.png') }}" alt="edit playlist" class="action-icon"></button>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            {% if not playlist.scheduled %}
+                            <span class="latest-refresh" title="Shown only when chosen with a button">Buttons only</span>
+                            {% endif %}
+                            {% if not loop.first %}
+                            <button class="edit-button" title="Move up" onclick="movePlaylist('{{ playlist.name }}', -1)">▲</button>
+                            {% endif %}
+                            {% if not loop.last %}
+                            <button class="edit-button" title="Move down" onclick="movePlaylist('{{ playlist.name }}', 1)">▼</button>
+                            {% endif %}
+                            <button class="edit-button" onclick="openEditModal('{{ playlist.name }}', '{{ playlist.start_time }}','{{ playlist.end_time }}', {{ playlist.cycle_interval_seconds }}, {{ playlist.scheduled | tojson }})"><img src="{{ url_for('static', filename='icons/settings.png') }}" alt="edit playlist" class="action-icon"></button>
+                        </div>
                     </div>
                     <!-- Plugin List -->
                     <div class="plugin-list">
@@ -449,7 +535,8 @@
                                         data-playlist="{{ playlist.name }}"
                                         data-plugin-id="{{ plugin_instance.plugin_id }}"
                                         data-instance="{{ plugin_instance.name }}"
-                                        data-refresh='{{ plugin_instance.refresh | tojson }}'>
+                                        data-refresh='{{ plugin_instance.refresh | tojson }}'
+                                        data-button-actions='{{ plugin_instance.button_actions | tojson }}'>
                                     <img src="{{ url_for('static', filename='icons/clock.svg') }}" alt="refresh settings" class="action-icon">
                                 </button>
                                 <button class="edit-button" title="Display Now" onclick="displayPluginInstance('{{ playlist.name }}', '{{ plugin_instance.plugin_id }}','{{ plugin_instance.name }}')">
@@ -481,10 +568,28 @@
                     <input type="text" id="playlist_name" name="playlist_name" placeholder="Type something..." required class="form-input">
                 </div>
                 <div class="form-group">
-                    <label for="start_time" class="form-label">Display from </label>
-                    <select id="start_time" name="start_time" class="form-input"></select>
-                    <span> - </span>
-                    <select id="end_time" name="end_time" class="form-input"></select>
+                    <label class="form-label">Schedule</label>
+                </div>
+                <div class="form-group">
+                    <input type="radio" name="schedule" id="schedule_window" value="window">
+                    <label for="schedule_window">Show from</label>
+                    <select id="start_time" name="start_time" class="form-input" onfocus="setButtonsOnly(false)"></select>
+                    <label for="end_time">to</label>
+                    <select id="end_time" name="end_time" class="form-input" onfocus="setButtonsOnly(false)"></select>
+                </div>
+                <div class="form-group nowrap">
+                    <input type="radio" name="schedule" id="buttons_only" value="buttons_only">
+                    <label for="buttons_only">Buttons only</label>
+                    <span title="The playlist is only shown when chosen with a button, never on its own.">ⓘ</span>
+                </div>
+                <div class="form-group">
+                    <label for="cycle_interval" class="form-label">Next plugin every</label>
+                    <span title="How often the playlist moves on to its next plugin while it's on screen. A playlist with only one plugin redraws when that plugin's own refresh setting is due instead.">ⓘ</span>
+                    <input type="number" id="cycle_interval" name="cycle_interval" class="form-input" required min="1">
+                    <select id="cycle_unit" name="cycle_unit" class="form-input">
+                        <option value="minute">Minute</option>
+                        <option value="hour">Hour</option>
+                    </select>
                 </div>
             </form>
             <div class="buttons-container">
@@ -503,6 +608,16 @@
             <form id="refreshSettingsForm" class="settings-form">
                 {% set prefix = "modal" %}
                 {% include 'refresh_settings_form.html' %}
+                <div class="form-group">
+                    <label>Long press</label>
+                    <span title="What each button does on a long press while this plugin is on screen. A long press action set in Settings takes precedence.">ⓘ</span>
+                </div>
+                {% for button in buttons %}
+                <div class="form-group nowrap">
+                    <label for="longPress{{ button }}" class="form-label">Button {{ button }}</label>
+                    <select id="longPress{{ button }}" class="form-input long-press-select" data-button="{{ button }}"></select>
+                </div>
+                {% endfor %}
             </form>
             <div class="buttons-container">
                 <button type="button" class="action-button" onclick="saveRefreshSettings()">Save</button>

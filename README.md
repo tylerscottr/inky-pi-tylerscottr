@@ -107,6 +107,22 @@ To update your InkyPi with the latest code changes, follow these steps:
     ```
 This process ensures that any new updates, including code changes and additional dependencies, are properly applied without requiring a full reinstallation.
 
+To do steps 2 and 3 in one go, run `sudo bash install/update.sh --pull`. It runs `git pull --rebase` as the owner of the project directory, so it also follows a branch that was force-pushed, and it stops without changing anything if you have uncommitted changes.
+
+## Buttons
+The four buttons on an Inky Impression work out of the box: A and B switch to the previous and next playlist, C refreshes the plugin on screen, and D turns the screen off. Any button press wakes it again. Presses are ignored until the previous press shows up on screen. Change what each button does, short or long press, under Settings → Buttons. Plugin instances can have their own long press actions, set from the clock icon on the Playlists page.
+
+To have a playlist that's only shown when you switch to it with a button, choose "Buttons only" under Schedule in its settings on the Playlists page.
+
+With any other display, wire each button between a free GPIO pin and ground, then enter the pins under Settings → Buttons.
+
+A button press, or Display and Update Now in the web UI, holds its choice on screen for a while before the playlist schedule takes over again. Set how long under Settings → Schedule.
+
+## Status LED
+Spectra 6 Inky Impressions have an LED on GPIO 13. InkyPi uses it to show when it's busy rendering or updating the screen, when a press becomes a long press, when something went wrong, and while it starts up. Choose which of these to show, and how bright the LED gets, under Settings → LED. Any other LED wired to a GPIO pin works too.
+
+Dimming needs hardware PWM, so on Spectra Impressions `install.sh` and `update.sh` add `dtoverlay=pwm,pin=13,func=4` to `/boot/firmware/config.txt` (backing it up to `config.txt.inkypi-backup`) and offer to reboot. Pass `--no-led-dimming` to either script to leave that out, or to remove it if InkyPi added it before. Without it, the LED simply switches on and off.
+
 ## Uninstall
 To install InkyPi, simply run the following command:
 
@@ -119,7 +135,6 @@ The InkyPi project is constantly evolving, with many exciting features and impro
 
 - Plugins, plugins, plugins
 - Modular layouts to mix and match plugins
-- Support for buttons with customizable action bindings
 - Improved Web UI on mobile devices
 
 Check out the public [trello board](https://trello.com/b/SWJYWqe4/inkypi) to explore upcoming features and vote on what you'd like to see next!

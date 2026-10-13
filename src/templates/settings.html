@@ -16,6 +16,7 @@
     <link rel="stylesheet" type="text/css" href="{{ url_for('static',filename='styles/main.css') }}">
     <script src="{{ url_for('static', filename='scripts/dark_mode.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/response_modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/info_tips.js') }}"></script>
     <script>
         async function handleAction() {
             const form = document.querySelector('.settings-form');
@@ -32,7 +33,6 @@
                     showResponseModal('success', `Success! ${result.message}`);
                 } else {
                     showResponseModal('failure', `Error!  ${result.error}`);
-                    form.reset();
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -40,28 +40,11 @@
             }
         }
 
-        let pluginCycleIntervalSeconds = {{ device_settings.plugin_cycle_interval_seconds | default(3600) | tojson }};
-    
-        // Function to populate the fields
-        function populateIntervalFields() {
-            const intervalInput = document.getElementById('interval');
-            const unitSelect = document.getElementById('unit');
-
-            // Check if pluginCycleIntervalSeconds is valid
-            if (pluginCycleIntervalSeconds !== null && pluginCycleIntervalSeconds !== undefined) {
-                // Convert seconds to minutes and hours
-                let intervalInMinutes = Math.floor(pluginCycleIntervalSeconds / 60);
-                let intervalInHours = Math.floor(pluginCycleIntervalSeconds / 3600);
-
-                // Determine which unit to use (minute or hour) based on the interval
-                if (intervalInHours > 0) {
-                    intervalInput.value = intervalInHours;
-                    unitSelect.value = "hour";
-                } else {
-                    intervalInput.value = intervalInMinutes;
-                    unitSelect.value = "minute";
-                }
-            }
+        // Show only the duration fields that apply to the selected hold mode.
+        function updateHoldFields() {
+            const minimum = document.getElementById('holdMode').value === 'minimum';
+            document.getElementById('holdFixedGroup').style.display = minimum ? 'none' : '';
+            document.getElementById('holdMinimumGroup').style.display = minimum ? '' : 'none';
         }
 
         function toggleCollapsible(button) {
@@ -94,7 +77,7 @@
             const valueDisplay = document.getElementById(`${slider.id}-value`);
             valueDisplay.textContent = parseFloat(slider.value).toFixed(1);
         }
-        document.addEventListener('DOMContentLoaded', populateIntervalFields);
+        document.addEventListener('DOMContentLoaded', updateHoldFields);
     </script>
 </head>
 <body>
@@ -176,21 +159,115 @@
                     </div>
                 </div>
                 <div class="form-group">
-                    <div class="form-group">
-                        <label for="interval">Plugin Cycle Interval:</label>
-                        <span title="Determines how often the display switches to a new plugin.">ⓘ</span>
-                        <span>Every</span>
-                        <input type="number" id="interval" name="interval" class="form-input" required min="1">
-                        <select id="unit" name="unit" class="form-input" required>
-                            <option value="minute">Minute</option>
-                            <option value="hour">Hour</option>
-                        </select>
-                    </div>
-
                     <div class="form-group nowrap">
                         <label class="form-label" for="logSystemStats">Log System Stats</label>
                             <input type="checkbox" id="logSystemStats" name="logSystemStats" {% if device_settings.log_system_stats %}checked{% endif %}>
                         </label>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+                        Schedule <span class="collapsible-icon">▼</span>
+                    </button>
+                    <div class="settings-container collapsible-content">
+                        <div class="form-group">
+                            <span class="field-pair" style="flex: none;">
+                                <label for="holdMode" class="form-label">Hold manual changes:</label>
+                                <span title="Buttons and the Display and Update Now actions keep their choice on screen instead of the playlist schedule.">ⓘ</span>
+                            </span>
+                            <select id="holdMode" name="holdMode" class="form-input" onchange="updateHoldFields()">
+                                <option value="fixed" {% if hold_settings.mode == "fixed" %}selected{% endif %}>For a fixed time</option>
+                                <option value="minimum" {% if hold_settings.mode == "minimum" %}selected{% endif %}>Until the schedule changes</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="holdFixedGroup">
+                            <span class="field-pair" style="flex: none;">
+                                <label for="holdFixedMinutes" class="form-label">Hold for</label>
+                                <input type="number" id="holdFixedMinutes" name="holdFixedMinutes" class="form-input minutes-input" min="1" value="{{ hold_settings.fixed_minutes }}">
+                                <span>minutes</span>
+                            </span>
+                        </div>
+                        <div class="form-group" id="holdMinimumGroup">
+                            <span class="field-pair" style="flex: none;">
+                                <label for="holdMinimumMinutes" class="form-label">Hold for</label>
+                                <input type="number" id="holdMinimumMinutes" name="holdMinimumMinutes" class="form-input minutes-input" min="1" aria-label="Minimum minutes" value="{{ hold_settings.minimum_minutes }}">
+                                <span>–</span>
+                                <input type="number" id="holdMaximumMinutes" name="holdMaximumMinutes" class="form-input minutes-input" min="1" aria-label="Maximum minutes" value="{{ hold_settings.maximum_minutes }}">
+                                <span>minutes</span>
+                            </span>
+                        </div>
+                        <div class="form-group">
+                            <span class="field-pair" style="flex: none;">
+                                <label for="prerenderMode" class="form-label">Render other playlists:</label>
+                                <span title="Rendering playlists before they're on screen makes switching faster, but uses more CPU, memory, and API calls.">ⓘ</span>
+                            </span>
+                            <select id="prerenderMode" name="prerenderMode" class="form-input">
+                                <option value="on_screen" {% if prerender_mode == "on_screen" %}selected{% endif %}>Only when on screen</option>
+                                <option value="just_in_time" {% if prerender_mode == "just_in_time" %}selected{% endif %}>Just before their time window</option>
+                                <option value="always" {% if prerender_mode == "always" %}selected{% endif %}>Always, on their own cycle</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+                        Buttons <span class="collapsible-icon">▼</span>
+                    </button>
+                    <div class="settings-container collapsible-content">
+                        <p style="margin: 8px 0;">Buttons connect a GPIO pin (BCM numbering) to ground. Leave a pin empty to disable that button. A long press uses the plugin instance's own action when the action here is "No action".</p>
+                        {% for button in buttons %}
+                        {% set config = button_config[button] %}
+                        <div class="form-group">
+                            <span class="field-pair" style="flex: none;">
+                                <label class="form-label" style="min-width: 70px;">Button {{ button }}</label>
+                                <label for="button{{ button }}Pin">GPIO</label>
+                                <input type="number" id="button{{ button }}Pin" name="button{{ button }}Pin" class="form-input" min="0" max="27" style="max-width: 80px;" value="{{ config.pin if config.pin is not none else '' }}">
+                            </span>
+                            {% for press in ["short", "long"] %}
+                            <span class="field-pair">
+                                <label for="button{{ button }}{{ press | title }}">{{ press | title }}</label>
+                                <select id="button{{ button }}{{ press | title }}" name="button{{ button }}{{ press | title }}" class="form-input">
+                                    {% for action in button_actions %}
+                                    <option value="{{ action.id }}" {% if config[press] == action.id %}selected{% endif %}>{{ action.label }}</option>
+                                    {% endfor %}
+                                </select>
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                        <div class="form-group nowrap">
+                            <label for="longPressSeconds" class="form-label">Long press after</label>
+                            <input type="number" id="longPressSeconds" name="longPressSeconds" class="form-input" min="0.3" max="5" step="0.1" style="max-width: 80px;" value="{{ button_config.long_press_seconds }}">
+                            <span>seconds</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="collapsible">
+                    <button type="button" class="collapsible-header" onclick="toggleCollapsible(this)">
+                        LED <span class="collapsible-icon">▼</span>
+                    </button>
+                    <div class="settings-container collapsible-content">
+                        <p style="margin: 8px 0;">{{ led_status }}. Spectra 6 Inky Impressions have an LED on GPIO 13. Dimming and the brightness limit need the pin's PWM overlay, which <code>install/update.sh</code> adds for those boards.</p>
+                        <div class="form-group">
+                            <span class="field-pair" style="flex: none;">
+                                <label for="ledPin" class="form-label">GPIO</label>
+                                <input type="number" id="ledPin" name="ledPin" class="form-input" min="0" max="27" style="max-width: 80px;" value="{{ led_config.pin if led_config.pin is not none else '' }}">
+                            </span>
+                            <span class="field-pair">
+                                <label for="ledMaxBrightness" class="form-label">Max brightness</label>
+                                <span><span id="ledMaxBrightness-value">{{ led_config.max_brightness }}</span>%</span>
+                                <input type="range" id="ledMaxBrightness" name="ledMaxBrightness" class="form-input" min="5" max="100" step="5" value="{{ led_config.max_brightness }}" style="max-width: 300px;" oninput="document.getElementById('ledMaxBrightness-value').textContent = this.value">
+                            </span>
+                        </div>
+                        {% for use, label, pattern in [("busy", "While updating the screen", "fade in/out"), ("long_press", "On a long press", "flash"), ("error", "After an error", "long-short blink"), ("startup", "While starting up", "blink")] %}
+                        <div class="form-group nowrap">
+                            <input type="checkbox" id="led_{{ use }}" name="led_{{ use }}" {% if led_config[use] %}checked{% endif %}>
+                            <label for="led_{{ use }}" style="white-space: normal;">{{ label }} <span style="color: var(--text-secondary);">[{{ pattern }}]</span></label>
+                        </div>
+                        {% endfor %}
                     </div>
                 </div>
 

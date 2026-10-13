@@ -16,6 +16,7 @@
     <link rel= "stylesheet" type= "text/css" href= "{{ url_for('static',filename='styles/main.css') }}">
     <script src="{{ url_for('static', filename='scripts/dark_mode.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/response_modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='scripts/info_tips.js') }}"></script>
     <script src="{{ url_for('static', filename='scripts/refresh_settings_manager.js') }}"></script>
     <!-- Select2 CSS -->
     <link href="{{ url_for('static', filename='styles/select2.min.css') }}" rel="stylesheet" />
@@ -47,7 +48,7 @@
                 data.append("plugin_id", "{{ plugin.id }}");
                 data.append("refresh_settings", JSON.stringify(formData));
 
-                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName, {
+                const response = await fetch("{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(pluginInstanceName), {
                     method: 'PUT',
                     body: data
                 });
@@ -93,7 +94,7 @@
                 formData.append("refresh_settings", JSON.stringify(scheduleData));
                 clearFormOnSubmit = true
             } else if (action == "update_instance") {
-                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + pluginInstanceName,
+                url = "{{ url_for('plugin.update_plugin_instance', instance_name='') }}" + encodeURIComponent(pluginInstanceName),
                 method = 'PUT'
             }
 

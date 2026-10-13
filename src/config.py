@@ -1,8 +1,10 @@
 import os
 import json
 import logging
+import threading
+import time
 from dotenv import load_dotenv
-from model import PlaylistManager, RefreshInfo
+from model import PlaylistManager, RefreshInfo, DisplayHold
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,18 @@ class Config:
     plugin_image_dir = os.path.join(BASE_DIR, "static", "images", "plugins")
 
     def __init__(self):
+        # Guards the config and model objects, which the web server and the refresh task share.
+        self.lock = threading.RLock()
+        self.needs_migration_write = False
         self.config = self.read_config()
         self.plugins_list = self.read_plugins_list()
         self.playlist_manager = self.load_playlist_manager()
         self.refresh_info = self.load_refresh_info()
+        self.display_hold = DisplayHold.from_dict(self.get_config("display_hold", default=None))
+        self.screen_off = bool(self.get_config("screen_off", default=False))
+        if self.needs_migration_write:
+            # Save the generated playlist ids so holds and button settings can refer to them.
+            self.write_config()
 
     def read_config(self):
         """Reads the device config JSON file and returns it as a dictionary."""
@@ -55,10 +65,27 @@ class Config:
     def write_config(self):
         """Updates the cached config from the model objects and writes to the config file."""
         logger.debug(f"Writing device config to {self.config_file}")
-        self.update_value("playlist_config", self.playlist_manager.to_dict())
-        self.update_value("refresh_info", self.refresh_info.to_dict())
-        with open(self.config_file, 'w') as outfile:
-            json.dump(self.config, outfile, indent=4)
+        with self.lock:
+            self.update_value("playlist_config", self.playlist_manager.to_dict())
+            self.update_value("refresh_info", self.refresh_info.to_dict())
+            self.update_value("display_hold", self.display_hold.to_dict() if self.display_hold else None)
+            self.update_value("screen_off", self.screen_off)
+
+            # Replace the file in one step so a power loss mid-write can't leave it truncated.
+            temp_file = self.config_file + ".tmp"
+            with open(temp_file, 'w') as outfile:
+                json.dump(self.config, outfile, indent=4)
+                outfile.flush()
+                os.fsync(outfile.fileno())
+            for attempt in range(5):
+                try:
+                    os.replace(temp_file, self.config_file)
+                    break
+                except PermissionError:
+                    # Windows briefly locks a file that was just written, e.g. while antivirus scans it.
+                    if attempt == 4:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
 
     def get_config(self, key=None, default={}):
         """Gets the value of a specific configuration key or returns the entire config if none provided."""
@@ -103,14 +130,16 @@ class Config:
 
     def update_config(self, config):
         """Updates the config with the new values provided and writes to the config file."""
-        self.config.update(config)
-        self.write_config()
+        with self.lock:
+            self.config.update(config)
+            self.write_config()
 
     def update_value(self, key, value, write=False):
         """Updates a specific key in the configuration with a new value and optionally writes it to the config file."""
-        self.config[key] = value
-        if write:
-            self.write_config()
+        with self.lock:
+            self.config[key] = value
+            if write:
+                self.write_config()
 
     def load_env_key(self, key):
         """Loads an environment variable using dotenv and returns its value."""
@@ -119,9 +148,21 @@ class Config:
 
     def load_playlist_manager(self):
         """Loads the playlist manager object from the config."""
-        playlist_manager = PlaylistManager.from_dict(self.get_config("playlist_config"))
+        playlist_config = self.get_config("playlist_config")
+
+        # Older configs had one cycle interval for every playlist.
+        global_cycle_interval = self.config.pop("plugin_cycle_interval_seconds", None)
+        self.config.pop("scheduler_sleep_time", None)
+        for playlist in playlist_config.get("playlists", []):
+            if not playlist.get("cycle_interval_seconds") or not playlist.get("id"):
+                if not playlist.get("cycle_interval_seconds"):
+                    playlist["cycle_interval_seconds"] = global_cycle_interval
+                self.needs_migration_write = True
+
+        playlist_manager = PlaylistManager.from_dict(playlist_config)
         if not playlist_manager.playlists:
             playlist_manager.add_default_playlist()
+            self.needs_migration_write = True
         return playlist_manager
 
     def load_refresh_info(self):

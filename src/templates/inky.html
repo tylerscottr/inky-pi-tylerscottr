@@ -51,6 +51,19 @@
             refreshImage();
             setInterval(refreshImage, refreshIntervalMs);
         });
+
+        async function postAndReload(url, body) {
+            try {
+                await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body || {})
+                });
+            } catch (error) {
+                console.error('Request failed:', error);
+            }
+            location.reload();
+        }
     </script>
     <script src="{{ url_for('static', filename='scripts/image_modal.js') }}"></script>
 </head>
@@ -77,6 +90,33 @@
         <div class="image-container">
             <img src="{{ url_for('static', filename='images/current_image.png') }}" alt="Current Image">
         </div>
+
+        {% if status.screen_off or status.hold %}
+        <div class="sort-hint visible">
+            {% if status.screen_off %}
+            The screen is off. Press any button to wake it.
+            {% else %}
+            Showing {{ status.hold.label }}
+            {%- if status.hold.pinned %} until it's unpinned
+            {%- elif status.hold.until_schedule_change %} until the schedule changes, {{ status.hold.ends_at }} at the latest
+            {%- else %} until {{ status.hold.ends_at }}{% endif %}
+            {%- if status.scheduled_playlist %} (scheduled: {{ status.scheduled_playlist }}){% endif %}.
+            <button class="sort-toggle" onclick="postAndReload('{{ url_for('main.resume_schedule') }}')">Resume schedule</button>
+            {% endif %}
+        </div>
+        {% endif %}
+
+        {% if simulated_buttons %}
+        <div class="plugins-header">
+            <h2 class="plugins-title">Buttons</h2>
+            <div class="plugins-controls">
+                {% for button in simulated_buttons %}
+                <button class="sort-toggle" title="Short press" onclick="postAndReload('{{ url_for('main.press_button') }}', {button: '{{ button }}'})">{{ button }}</button>
+                <button class="view-toggle" title="Long press" onclick="postAndReload('{{ url_for('main.press_button') }}', {button: '{{ button }}', long_press: true})">{{ button }}…</button>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Separator -->
         <div class="separator"></div>

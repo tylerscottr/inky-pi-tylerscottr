@@ -43,3 +43,16 @@ class AbstractDisplay:
             NotImplementedError: If not implemented in a subclass.
         """
         raise NotImplementedError("Method 'display_image(...) must be provided in a subclass.")
+
+    def default_button_pins(self):
+        """
+        Returns the GPIO pins of buttons built into the display, as {"A": pin, ...}.
+        Displays without buttons return an empty dict.
+        """
+        return {}
+
+    def default_led_pin(self):
+        """
+        Returns the GPIO pin of an LED built into the display, or None.
+        """
+        return None

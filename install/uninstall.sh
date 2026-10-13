@@ -13,6 +13,9 @@ VENV_PATH="$INSTALL_PATH/venv_$APPNAME"
 SERVICE_FILE="/etc/systemd/system/$APPNAME.service"
 CONFIG_DIR="$INSTALL_PATH/src/config"
 
+SCRIPT_DIR=$( cd -P "$( dirname "$(readlink -f "${BASH_SOURCE[0]}")" )" >/dev/null 2>&1 && pwd )
+source "$SCRIPT_DIR/led_dimming.sh"
+
 echo_success() {
   echo -e "$1 [\e[32m\xE2\x9C\x94\e[0m]"
 }
@@ -109,6 +112,10 @@ confirm_uninstall
 stop_service
 disable_service
 remove_files
+disable_led_dimming
 
 echo_success "Uninstallation complete."
 echo_header "All components of $APPNAME have been removed."
+if [ "$BOOT_CONFIG_CHANGED" = true ]; then
+  echo "Reboot with 'sudo reboot now' to finish removing LED dimming."
+fi

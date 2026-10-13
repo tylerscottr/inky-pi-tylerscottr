@@ -1,13 +1,32 @@
 from flask import Blueprint, request, jsonify, current_app, render_template, send_from_directory
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from plugins.plugin_registry import get_plugin_instance
 from utils.app_utils import resolve_path, handle_request_files, parse_form
-from refresh_task import ManualRefresh, PlaylistRefresh
+from buttons import BUTTONS, is_valid_action
 import json
 import os
 import logging
 
 logger = logging.getLogger(__name__)
 plugin_bp = Blueprint("plugin", __name__)
+
+# How long a request waits for its render and display before answering anyway.
+DISPLAY_WAIT_SECONDS = 300
+
+def _wait_for_display(future):
+    """Waits for a queued display and returns a JSON response describing the outcome."""
+    try:
+        future.result(timeout=DISPLAY_WAIT_SECONDS)
+    except FutureTimeoutError:
+        return jsonify({"success": True, "message": "Display update is still in progress"}), 202
+    return jsonify({"success": True, "message": "Display updated"}), 200
+
+def get_plugin_button_actions(plugin_id):
+    """Returns the button actions a plugin offers, or an empty list if it isn't loaded."""
+    try:
+        return get_plugin_instance({"id": plugin_id}).get_button_actions()
+    except ValueError:
+        return []
 
 def _delete_plugin_instance_images(device_config, plugin_instance_obj):
     """Delete all images associated with a plugin instance."""
@@ -141,12 +160,14 @@ def delete_plugin_instance():
         # Delete associated images before removing from playlist
         _delete_plugin_instance_images(device_config, plugin_instance_obj)
 
-        result = playlist.delete_plugin(plugin_id, plugin_instance)
-        if not result:
-            return jsonify({"success": False, "message": "Plugin instance not found"}), 400
+        with device_config.lock:
+            result = playlist.delete_plugin(plugin_id, plugin_instance)
+            if not result:
+                return jsonify({"success": False, "message": "Plugin instance not found"}), 400
 
-        # save changes to device config file
-        device_config.write_config()
+            # save changes to device config file
+            device_config.write_config()
+        current_app.config['REFRESH_TASK'].signal_config_change()
 
     except Exception as e:
         logger.exception("EXCEPTION CAUGHT: " + str(e))
@@ -169,6 +190,17 @@ def update_plugin_instance(instance_name):
         plugin_instance = playlist_manager.find_plugin(plugin_id, instance_name)
         if not plugin_instance:
             return jsonify({"error": f"Plugin instance: {instance_name} does not exist"}), 500
+
+        # Long press actions for each button while this instance is on screen
+        button_actions_json = form_data.pop("button_actions", None)
+        if button_actions_json:
+            button_actions = json.loads(button_actions_json)
+            playlist_ids = [p.id for p in playlist_manager.playlists]
+            plugin_actions = [a["id"] for a in get_plugin_button_actions(plugin_id)]
+            for button, action in button_actions.items():
+                if button not in BUTTONS or not is_valid_action(action, playlist_ids, plugin_actions):
+                    return jsonify({"error": f"Invalid action '{action}' for button {button}"}), 400
+            plugin_instance.button_actions = button_actions
 
         # Handle refresh settings if provided
         refresh_settings_json = form_data.pop("refresh_settings", None)
@@ -220,39 +252,23 @@ def display_plugin_instance():
         if not plugin_instance:
             return jsonify({"success": False, "message": f"Plugin instance '{plugin_instance_name}' not found"}), 400
 
-        refresh_task.manual_update(PlaylistRefresh(playlist, plugin_instance, force=True))
+        return _wait_for_display(refresh_task.show_instance(playlist, plugin_instance))
     except Exception as e:
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-    return jsonify({"success": True, "message": "Display updated"}), 200
 
 @plugin_bp.route('/update_now', methods=['POST'])
 def update_now():
     device_config = current_app.config['DEVICE_CONFIG']
     refresh_task = current_app.config['REFRESH_TASK']
-    display_manager = current_app.config['DISPLAY_MANAGER']
 
     try:
         plugin_settings = parse_form(request.form)
         plugin_settings.update(handle_request_files(request.files))
         plugin_id = plugin_settings.pop("plugin_id")
+        if not device_config.get_plugin(plugin_id):
+            return jsonify({"error": f"Plugin '{plugin_id}' not found"}), 404
 
-        # Check if refresh task is running
-        if refresh_task.running:
-            refresh_task.manual_update(ManualRefresh(plugin_id, plugin_settings))
-        else:
-            # In development mode, directly update the display
-            logger.info("Refresh task not running, updating display directly")
-            plugin_config = device_config.get_plugin(plugin_id)
-            if not plugin_config:
-                return jsonify({"error": f"Plugin '{plugin_id}' not found"}), 404
-
-            plugin = get_plugin_instance(plugin_config)
-            image = plugin.generate_image(plugin_settings, device_config)
-            display_manager.display_image(image, image_settings=plugin_config.get("image_settings", []))
-
+        return _wait_for_display(refresh_task.show_manual(plugin_id, plugin_settings))
     except Exception as e:
         logger.exception(f"Error in update_now: {str(e)}")
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
-
-    return jsonify({"success": True, "message": "Display updated"}), 200
